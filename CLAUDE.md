@@ -57,17 +57,17 @@ React UI, all running on this machine — nothing is deployed anywhere.
   was confirmed with a live request against its actual API before being added (see the
   `add-job-source` skill). A trailing comment in that file lists teams confirmed to have no
   scrapable public API, so future sessions don't re-research the same dead ends.
-- **MLB coverage is 16/30 teams via scraping, six platforms deep** — Greenhouse, Lever, Workday,
+- **MLB coverage is 19/30 teams via scraping, six platforms deep** — Greenhouse, Lever, Workday,
   ADP (Workforce Now), and UKG Pro Recruiting (aka UltiPro; hosts vary — `recruiting.ultipro.com`,
   `recruiting2.ultipro.com`, `<org>.rec.pro.ukg.net` are all the same platform/API shape). The
-  remaining 14 teams sit behind Teamwork Online or a closed single-employer ATS (Paycor, aaimtrack,
+  remaining 11 teams sit behind Teamwork Online or a closed single-employer ATS (Paycor, aaimtrack,
   SAP SuccessFactors, Hireology) with no public JSON API — see the dead-end comment in
   `sources.config.ts` for exactly which team is on which platform. **Don't trust an mlb.com team
-  page alone to say a team is Teamwork-Online-only** — four teams (Yankees, Dodgers, Pirates,
-  Rockies) were previously miscategorized as dead ends because the research only checked the
-  mlb.com career page instead of following the actual "Apply Now" redirect, which goes to the
-  team's real ATS. When re-checking a "dead end," click through to the real apply flow, not just
-  the landing page. The honest way to close the remaining gap is the manual flow
+  page alone to say a team is Teamwork-Online-only** — seven teams (Yankees, Dodgers, Pirates,
+  Rockies, Astros, Angels, Nationals) were previously miscategorized as dead ends because the
+  research only checked the mlb.com career page instead of following the actual "Apply Now"
+  redirect, which goes to the team's real ATS. When re-checking a "dead end," click through to
+  the real apply flow, not just the landing page. The honest way to close the remaining gap is the manual flow
   (`POST /api/postings/manual`, "Add posting manually" on Discovery), not more scraping attempts —
   it creates a `Source` row of `type: "manual"` per organization (`manual:<org>`) so manual entries
   still group/attribute like scraped ones, and dedupes on a sha256 hash of the URL via the same

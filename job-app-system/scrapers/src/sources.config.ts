@@ -64,6 +64,24 @@ export const ukgSources: { host: string; tenant: string; boardId: string; organi
     boardId: "17b65dc7-8957-462f-bbe5-957d054a4367",
     organizationName: "Colorado Rockies",
   },
+  {
+    host: "recruiting2.ultipro.com",
+    tenant: "HOU1000",
+    boardId: "e68ddd55-8f58-ba9d-0b3a-76742aed1055",
+    organizationName: "Houston Astros",
+  },
+  {
+    host: "recruiting2.ultipro.com",
+    tenant: "ANG1000ANGEL",
+    boardId: "c2c34b69-1480-428d-a3a9-c45e8297edb3",
+    organizationName: "Los Angeles Angels",
+  },
+  {
+    host: "washnats.rec.pro.ukg.net",
+    tenant: "MON1001WNBC",
+    boardId: "769be41b-7ab1-40e5-b837-33d7c87b5787",
+    organizationName: "Washington Nationals",
+  },
 ];
 
 // Team career pages not on Greenhouse/Lever/Workday/ADP/UKG. Validate selectors against the
@@ -79,17 +97,18 @@ export const teamPageSources: {
 
 // Confirmed NOT to have a scrapable public API — re-verified live (not carried over from
 // stale research), each tagged with its real platform so a future session doesn't waste time
-// re-checking these or reaching for a workaround. 14 of 30 MLB teams land here; the honest way
+// re-checking these or reaching for a workaround. 11 of 30 MLB teams land here; the honest way
 // to cover them in the tracker is the manual "add posting by URL" flow (POST /api/postings/manual),
 // not more scraping — none of these expose a public JSON job-search API to hit directly:
-//   Teamwork Online only (no public API): Astros, Angels, Marlins, Nationals, Reds, Brewers,
-//     Royals, White Sox, Diamondbacks, Rays
+//   Teamwork Online only (no public API): Marlins, Reds, Brewers, Royals, White Sox,
+//     Diamondbacks, Rays
 //   Minnesota Twins — Paycor (recruitingbypaycor.com)
 //   St. Louis Cardinals — aaimtrack.com (tenant stlcardinals)
 //   Toronto Blue Jays — SAP SuccessFactors, via jobs.rogers.com
 //   San Diego Padres — Hireology (careers.hireology.com/sandiegopadres)
 //
-// Yankees (ADP), Dodgers/Pirates/Rockies (UKG) were previously miscategorized as dead ends —
-// corrected once Will found real career-center links and we found their actual public APIs.
-// Worth re-checking any remaining "Teamwork Online only" team the same way (find the org's
-// actual outbound "Apply" redirect rather than trusting an mlb.com page never links off-platform).
+// Yankees (ADP), Dodgers/Pirates/Rockies/Astros/Angels/Nationals (UKG) were previously
+// miscategorized as dead ends — corrected once Will found real career-center links and we found
+// their actual public APIs. Worth re-checking any remaining "Teamwork Online only" team the same
+// way (find the org's actual outbound "Apply" redirect rather than trusting an mlb.com page
+// that never links off-platform).
