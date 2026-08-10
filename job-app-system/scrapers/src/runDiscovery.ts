@@ -6,6 +6,7 @@ import { ukgAdapter } from "./adapters/ukg.js";
 import { bambooHrAdapter } from "./adapters/bamboohr.js";
 import { aaimtrackAdapter } from "./adapters/aaimtrack.js";
 import { teamworkOnlineAdapter } from "./adapters/teamworkonline.js";
+import { dayforceAdapter } from "./adapters/dayforce.js";
 import { teamPageAdapter } from "./adapters/teamPage.js";
 import {
   greenhouseSources,
@@ -16,6 +17,7 @@ import {
   bambooHrSources,
   aaimtrackSources,
   teamworkOnlineSources,
+  dayforceSources,
   teamPageSources,
 } from "./sources.config.js";
 import { getOrCreateSource, ingestPostings } from "./ingest.js";
@@ -50,6 +52,7 @@ async function main() {
     runAdapter(bambooHrAdapter, bambooHrSources),
     runAdapter(aaimtrackAdapter, aaimtrackSources),
     runAdapter(teamworkOnlineAdapter, teamworkOnlineSources),
+    runAdapter(dayforceAdapter, dayforceSources),
     runAdapter(teamPageAdapter, teamPageSources),
   ]);
   const inserted = results.reduce((a, b) => a + b, 0);

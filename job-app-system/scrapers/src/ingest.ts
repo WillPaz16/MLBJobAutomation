@@ -1,5 +1,6 @@
 import { prisma } from "./db.js";
 import type { NormalizedPosting } from "./types.js";
+import { isLikelyDuplicateTitle } from "./dedupe.js";
 
 export async function getOrCreateSource(name: string, type: string, config: Record<string, any>) {
   return prisma.source.upsert({
@@ -21,6 +22,19 @@ export async function ingestPostings(sourceId: string, postings: NormalizedPosti
       skipped++;
       continue;
     }
+
+    // Same job posted to a different source under a different external ID (e.g. an org listed on
+    // both TeamWork Online and Dayforce) won't hit the check above — catch it by fuzzy title
+    // match within the same organization instead.
+    const sameOrgPostings = await prisma.posting.findMany({
+      where: { organization: posting.organization },
+      select: { title: true },
+    });
+    if (sameOrgPostings.some((p) => isLikelyDuplicateTitle(p.title, posting.title))) {
+      skipped++;
+      continue;
+    }
+
     await prisma.posting.create({
       data: {
         sourceId,
