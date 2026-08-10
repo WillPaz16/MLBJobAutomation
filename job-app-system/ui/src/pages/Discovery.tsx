@@ -8,12 +8,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 
 const CATEGORIES: { value: PostingCategory | "all"; label: string }[] = [
@@ -45,6 +48,15 @@ export function Discovery() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkApproving, setBulkApproving] = useState(false);
   const [detailPosting, setDetailPosting] = useState<Posting | null>(null);
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualForm, setManualForm] = useState({
+    title: "",
+    organization: "",
+    location: "",
+    url: "",
+    category: "OTHER" as PostingCategory,
+  });
+  const [savingManual, setSavingManual] = useState(false);
 
   const debouncedLocation = useDebounced(location, 300);
   const debouncedSearch = useDebounced(search, 300);
@@ -112,6 +124,31 @@ export function Discovery() {
     await load();
   }
 
+  async function createManualPosting() {
+    if (!manualForm.title.trim() || !manualForm.organization.trim() || !manualForm.url.trim()) {
+      toast.error("Title, organization, and URL are required");
+      return;
+    }
+    setSavingManual(true);
+    try {
+      await api.postings.createManual({
+        title: manualForm.title.trim(),
+        organization: manualForm.organization.trim(),
+        location: manualForm.location.trim() || undefined,
+        url: manualForm.url.trim(),
+        category: manualForm.category,
+      });
+      toast.success("Posting added");
+      setManualOpen(false);
+      setManualForm({ title: "", organization: "", location: "", url: "", category: "OTHER" });
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to add posting");
+    } finally {
+      setSavingManual(false);
+    }
+  }
+
   function toggleSelected(id: string) {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -160,6 +197,75 @@ export function Discovery() {
         <span className="ml-auto text-sm text-muted-foreground">
           {unreviewed.length} awaiting review of {postings.length} total
         </span>
+        <Dialog open={manualOpen} onOpenChange={setManualOpen}>
+          <DialogTrigger render={<Button variant="outline" size="sm" />}>Add posting manually</DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Add posting manually</DialogTitle>
+              <DialogDescription>
+                For orgs with no scrapable source (e.g. Teamwork-Online-only teams) — check
+                manually, then paste what you find here.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div>
+                <Label className="mb-1">Title</Label>
+                <Input
+                  value={manualForm.title}
+                  onChange={(e) => setManualForm((f) => ({ ...f, title: e.target.value }))}
+                  placeholder="e.g. Baseball Operations Fellow"
+                />
+              </div>
+              <div>
+                <Label className="mb-1">Organization</Label>
+                <Input
+                  value={manualForm.organization}
+                  onChange={(e) => setManualForm((f) => ({ ...f, organization: e.target.value }))}
+                  placeholder="e.g. New York Yankees"
+                />
+              </div>
+              <div>
+                <Label className="mb-1">Location</Label>
+                <Input
+                  value={manualForm.location}
+                  onChange={(e) => setManualForm((f) => ({ ...f, location: e.target.value }))}
+                  placeholder="e.g. Bronx, NY"
+                />
+              </div>
+              <div>
+                <Label className="mb-1">URL</Label>
+                <Input
+                  value={manualForm.url}
+                  onChange={(e) => setManualForm((f) => ({ ...f, url: e.target.value }))}
+                  placeholder="https://..."
+                />
+              </div>
+              <div>
+                <Label className="mb-1">Category</Label>
+                <Select
+                  value={manualForm.category}
+                  onValueChange={(v) => setManualForm((f) => ({ ...f, category: (v as PostingCategory) ?? "OTHER" }))}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CATEGORIES.filter((c) => c.value !== "all").map((c) => (
+                      <SelectItem key={c.value} value={c.value}>
+                        {c.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button onClick={createManualPosting} disabled={savingManual}>
+                {savingManual ? "Adding…" : "Add posting"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {selected.size > 0 && (

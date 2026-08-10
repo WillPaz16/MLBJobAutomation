@@ -98,6 +98,55 @@ describe("DELETE /api/postings/:id", () => {
   });
 });
 
+describe("POST /api/postings/manual", () => {
+  const body = {
+    title: "Baseball Operations Fellow",
+    organization: "New York Yankees",
+    location: "Bronx, NY",
+    url: "https://www.teamworkonline.com/example-yankees-fellow",
+    category: "BASEBALL_OPS",
+  };
+
+  it("creates a posting with a manual source scoped to the organization", async () => {
+    const res = await request(app).post("/api/postings/manual").send(body);
+    expect(res.status).toBe(201);
+    expect(res.body.title).toBe(body.title);
+    expect(res.body.category).toBe("BASEBALL_OPS");
+
+    const list = await request(app).get("/api/postings?q=Yankees");
+    expect(list.body[0].source.type).toBe("manual");
+    expect(list.body[0].source.name).toBe("manual:New York Yankees");
+  });
+
+  it("is idempotent — pasting the same URL twice doesn't create a duplicate", async () => {
+    const first = await request(app).post("/api/postings/manual").send(body);
+    const second = await request(app).post("/api/postings/manual").send(body);
+    expect(second.body.id).toBe(first.body.id);
+
+    const list = await request(app).get("/api/postings?q=Yankees");
+    expect(list.body).toHaveLength(1);
+  });
+
+  it("defaults category to OTHER when omitted", async () => {
+    const res = await request(app)
+      .post("/api/postings/manual")
+      .send({ title: "x", organization: "y", url: "https://example.com/job" });
+    expect(res.body.category).toBe("OTHER");
+  });
+
+  it("rejects a missing url", async () => {
+    const res = await request(app).post("/api/postings/manual").send({ title: "x", organization: "y" });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects a non-URL string for url", async () => {
+    const res = await request(app)
+      .post("/api/postings/manual")
+      .send({ title: "x", organization: "y", url: "not-a-url" });
+    expect(res.status).toBe(400);
+  });
+});
+
 describe("POST /api/postings/:id/approve", () => {
   it("creates a REVIEWING application", async () => {
     const posting = await createPosting();

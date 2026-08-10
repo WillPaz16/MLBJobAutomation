@@ -15,3 +15,14 @@ export class HttpError extends Error {
     this.status = status;
   }
 }
+
+// Rethrows a Prisma unique-constraint violation (P2002) as a 409 HttpError; rethrows
+// anything else unchanged. Use in a .catch() on create/update calls against unique fields.
+export function rethrowUniqueConstraint(message: string) {
+  return (err: unknown) => {
+    if (err && typeof err === "object" && "code" in err && err.code === "P2002") {
+      throw new HttpError(409, message);
+    }
+    throw err;
+  };
+}

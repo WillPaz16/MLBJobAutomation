@@ -14,7 +14,7 @@ generator client {
 model Source {
   id        String   @id @default(cuid())
   name      String   @unique
-  type      String   // "greenhouse" | "lever" | "teamwork_online" | "team_page" | "linkedin" | "indeed"
+  type      String   // "greenhouse" | "lever" | "workday" | "team_page" | "manual"
   config    String?  // JSON string: selectors, board tokens, base URLs, etc.
   createdAt DateTime @default(now())
   postings  Posting[]
@@ -43,6 +43,7 @@ model Application {
   postingId   String
   posting     Posting           @relation(fields: [postingId], references: [id])
   stage       String            @default("FOUND")
+  order       Int               @default(0) // position within its stage column, for Kanban drag-reorder
   resumeDocId String?
   resumeDoc   Document?         @relation("ResumeDoc", fields: [resumeDocId], references: [id])
   coverDocId  String?
@@ -54,14 +55,49 @@ model Application {
 }
 
 model Document {
-  id           String   @id @default(cuid())
-  kind         String   // "resume" | "cover_letter"
-  label        String
-  filePath     String
-  isBaseTemplate Boolean @default(false)
-  createdAt    DateTime @default(now())
-  resumeFor    Application[] @relation("ResumeDoc")
-  coverFor     Application[] @relation("CoverDoc")
+  id                    String   @id @default(cuid())
+  kind                  String   // "resume" | "cover_letter"
+  label                 String
+  filePath              String
+  isBaseTemplate        Boolean  @default(false)
+  generatedFromBulletIds String? // comma-separated ResumeBullet ids used to draft this document
+  toneId                String?
+  tone                  TonePreset? @relation(fields: [toneId], references: [id])
+  createdAt             DateTime @default(now())
+  resumeFor             Application[] @relation("ResumeDoc")
+  coverFor              Application[] @relation("CoverDoc")
+}
+
+// Reusable experience bullets the tailoring skill draws from instead of inventing
+// phrasing per application. `category` matches PostingCategory loosely (e.g.
+// "baseball_ops", "data_science", "general") to narrow candidates for a given posting.
+model ResumeBullet {
+  id       String  @id @default(cuid())
+  category String
+  text     String
+  tags     String? // comma-separated free-text tags
+  isActive Boolean @default(true)
+}
+
+// Named tone/voice guidance the tailoring skill picks based on posting category or
+// an OrgProfile override, instead of inferring tone from a single prior example letter.
+model TonePreset {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  guidance  String   // freeform description of voice/structure to follow
+  isDefault Boolean  @default(false)
+  documents Document[]
+  orgs      OrgProfile[]
+}
+
+// Optional per-organization memory so a second application to the same org doesn't
+// start from zero — notes on culture/prior interactions, and an optional tone override.
+model OrgProfile {
+  id               String      @id @default(cuid())
+  organizationName String      @unique
+  notes            String?
+  preferredToneId  String?
+  preferredTone    TonePreset? @relation(fields: [preferredToneId], references: [id])
 }
 
 model NotificationLog {

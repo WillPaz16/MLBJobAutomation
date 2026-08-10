@@ -31,6 +31,9 @@ afterEach(async () => {
   await prisma.posting.deleteMany();
   await prisma.source.deleteMany();
   await prisma.notificationLog.deleteMany();
+  await prisma.resumeBullet.deleteMany();
+  await prisma.orgProfile.deleteMany();
+  await prisma.tonePreset.deleteMany();
 });
 
 afterAll(async () => {

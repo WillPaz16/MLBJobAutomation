@@ -45,6 +45,14 @@ export const api = {
     },
     approve: (id: string) => request<Application>(`/postings/${id}/approve`, { method: "POST" }),
     remove: (id: string) => request<void>(`/postings/${id}`, { method: "DELETE" }),
+    createManual: (data: {
+      title: string;
+      organization: string;
+      location?: string;
+      url: string;
+      description?: string;
+      category?: string;
+    }) => request<Posting>("/postings/manual", { method: "POST", body: JSON.stringify(data) }),
   },
   applications: {
     list: () => request<Application[]>("/applications"),
@@ -52,6 +60,7 @@ export const api = {
       id: string,
       data: Partial<{
         stage: ApplicationStage;
+        order: number;
         resumeDocId: string;
         coverDocId: string;
         notes: string;

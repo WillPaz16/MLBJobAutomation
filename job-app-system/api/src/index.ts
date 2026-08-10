@@ -6,6 +6,9 @@ import { applicationsRouter } from "./routes/applications.js";
 import { documentsRouter } from "./routes/documents.js";
 import { analyticsRouter } from "./routes/analytics.js";
 import { notificationsRouter } from "./routes/notifications.js";
+import { resumeBulletsRouter } from "./routes/resumeBullets.js";
+import { tonePresetsRouter } from "./routes/tonePresets.js";
+import { orgProfilesRouter } from "./routes/orgProfiles.js";
 import { HttpError } from "./asyncHandler.js";
 
 export function createApp() {
@@ -18,6 +21,9 @@ export function createApp() {
   app.use("/api/documents", documentsRouter);
   app.use("/api/analytics", analyticsRouter);
   app.use("/api/notifications", notificationsRouter);
+  app.use("/api/resume-bullets", resumeBulletsRouter);
+  app.use("/api/tone-presets", tonePresetsRouter);
+  app.use("/api/org-profiles", orgProfilesRouter);
 
   app.get("/api/health", (_req, res) => res.json({ ok: true }));
 

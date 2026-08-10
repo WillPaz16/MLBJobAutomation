@@ -21,6 +21,7 @@ export const greenhouseSources: { boardToken: string; organizationName: string }
 // Lever: find an org's site slug from their careers page URL: jobs.lever.co/<site>.
 export const leverSources: { site: string; organizationName: string }[] = [
   { site: "redsox", organizationName: "Boston Red Sox" },
+  { site: "sfgiants", organizationName: "San Francisco Giants" },
   { site: "palantir", organizationName: "Palantir" },
 ];
 
@@ -46,9 +47,16 @@ export const teamPageSources: {
   locationSelector?: string;
 }[] = [];
 
-// Confirmed NOT to have a scrapable public API (Teamwork Online only, or a different vendor
-// ATS that doesn't expose a public JSON endpoint) — recorded here so future sessions don't
-// re-research the same dead ends: Yankees, Dodgers, Astros, Angels, Marlins, Nationals,
-// Pirates, Reds, Brewers, Royals, White Sox, Twins, Rockies (UKG), Diamondbacks, Cardinals
-// (aaimtrack.com), Blue Jays (routed through jobs.rogers.com, unconfirmed), San Francisco
-// Giants (boardToken guess 404'd — real token not identified).
+// Confirmed NOT to have a scrapable public API — re-verified live (not carried over from
+// stale research), each tagged with its real platform so a future session doesn't waste time
+// re-checking these or reaching for a workaround. 18 of 30 MLB teams land here; the honest way
+// to cover them in the tracker is the manual "add posting by URL" flow (POST /api/postings/manual),
+// not more scraping — none of these expose a public JSON job-search API to hit directly:
+//   Teamwork Online only (no public API): Yankees, Dodgers, Astros, Angels, Marlins, Nationals,
+//     Reds, Brewers, Royals, White Sox, Diamondbacks, Rays
+//   Pittsburgh Pirates — UKG (host ukg.net, tenant PIT1500PITA)
+//   Colorado Rockies — UKG (internal board only, no external tenant surfaced)
+//   Minnesota Twins — Paycor (recruitingbypaycor.com)
+//   St. Louis Cardinals — aaimtrack.com (tenant stlcardinals)
+//   Toronto Blue Jays — SAP SuccessFactors, via jobs.rogers.com
+//   San Diego Padres — Hireology (careers.hireology.com/sandiegopadres)

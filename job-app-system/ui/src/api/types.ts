@@ -50,6 +50,7 @@ export interface Application {
   postingId: string;
   posting?: Posting;
   stage: ApplicationStage;
+  order: number;
   resumeDocId: string | null;
   resumeDoc?: Document | null;
   coverDocId: string | null;
