@@ -8,6 +8,7 @@ import { adpAdapter } from "../src/adapters/adp.js";
 import { ukgAdapter } from "../src/adapters/ukg.js";
 import { bambooHrAdapter } from "../src/adapters/bamboohr.js";
 import { aaimtrackAdapter } from "../src/adapters/aaimtrack.js";
+import { teamworkOnlineAdapter } from "../src/adapters/teamworkonline.js";
 
 describe("greenhouseAdapter", () => {
   it("maps jobs to NormalizedPosting", async () => {
@@ -354,5 +355,76 @@ describe("aaimtrackAdapter", () => {
     await expect(
       aaimtrackAdapter.fetchPostings({ subdomain: "bad", domainId: "1", organizationName: "Bad Co" })
     ).rejects.toThrow(/aaimtrack fetch failed/);
+  });
+});
+
+describe("teamworkOnlineAdapter", () => {
+  const LISTING_HTML = `<html><body>
+    <a href="/baseball-jobs/testorg/testorg/sort-header">Sort</a>
+    <a href="/baseball-jobs/testorg/testorg/data-analyst-baseball-2181938">Data Analyst</a>
+  </body></html>`;
+
+  const DETAIL_HTML = `<html><head><script type="application/ld+json">${JSON.stringify({
+    "@context": "http://schema.org",
+    "@type": "JobPosting",
+    title: "Data Analyst, Baseball Operations",
+    datePosted: "2026-01-01",
+    identifier: { "@type": "PropertyValue", name: "TeamWork Online", value: 2181938 },
+    description: "Baseball analytics role",
+    jobLocation: [{ "@type": "Place", address: { addressLocality: "Miami", addressRegion: "FL" } }],
+  })}</script></head><body></body></html>`;
+
+  it("scrapes the listing page then parses JSON-LD off each detail page", async () => {
+    server.use(
+      http.get("https://www.teamworkonline.com/baseball-jobs/testorg/testorg", () =>
+        HttpResponse.html(LISTING_HTML)
+      ),
+      http.get(
+        "https://www.teamworkonline.com/baseball-jobs/testorg/testorg/data-analyst-baseball-2181938",
+        () => HttpResponse.html(DETAIL_HTML)
+      )
+    );
+
+    const postings = await teamworkOnlineAdapter.fetchPostings({
+      orgPath: "testorg/testorg",
+      organizationName: "Test Team",
+    });
+
+    expect(postings).toHaveLength(1);
+    expect(postings[0]).toMatchObject({
+      externalId: "2181938",
+      title: "Data Analyst, Baseball Operations",
+      organization: "Test Team",
+      location: "Miami, FL",
+      category: "BASEBALL_ANALYTICS",
+      url: "https://www.teamworkonline.com/baseball-jobs/testorg/testorg/data-analyst-baseball-2181938",
+    });
+  });
+
+  it("throws on a non-OK listing response", async () => {
+    server.use(
+      http.get("https://www.teamworkonline.com/baseball-jobs/badorg/badorg", () =>
+        HttpResponse.text("blocked", { status: 403 })
+      )
+    );
+    await expect(
+      teamworkOnlineAdapter.fetchPostings({ orgPath: "badorg/badorg", organizationName: "Bad Co" })
+    ).rejects.toThrow(/TeamWork Online fetch failed/);
+  });
+
+  it("skips detail pages that fail to fetch or have no JobPosting JSON-LD", async () => {
+    server.use(
+      http.get("https://www.teamworkonline.com/baseball-jobs/emptyorg/emptyorg", () =>
+        HttpResponse.html(`<a href="/baseball-jobs/emptyorg/emptyorg/broken-link-1">Broken</a>`)
+      ),
+      http.get("https://www.teamworkonline.com/baseball-jobs/emptyorg/emptyorg/broken-link-1", () =>
+        HttpResponse.html("<html><body>no jsonld here</body></html>")
+      )
+    );
+    const postings = await teamworkOnlineAdapter.fetchPostings({
+      orgPath: "emptyorg/emptyorg",
+      organizationName: "Empty Co",
+    });
+    expect(postings).toEqual([]);
   });
 });
