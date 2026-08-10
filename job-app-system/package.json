@@ -1,0 +1,12 @@
+{
+  "name": "job-app-system",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -n api,ui -c blue,green \"npm run dev --prefix api\" \"npm run dev --prefix ui\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "pm2": "^7.0.3"
+  }
+}

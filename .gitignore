@@ -10,6 +10,7 @@ build/
 .claude/scheduled_tasks.lock
 job-app-system/api/data/*.db
 job-app-system/api/data/*.db-journal
+job-app-system/api/data/backups/
 job-app-system/api/prisma/test.db
 job-app-system/api/prisma/test.db-journal
 job-app-system/scrapers/prisma/test.db

@@ -20,6 +20,7 @@ vi.mock("../src/api/client", () => ({
         avgResponseDaysByStage: {},
       }),
     },
+    notifications: { list: vi.fn().mockResolvedValue([]), generate: vi.fn() },
   },
 }));
 

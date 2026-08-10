@@ -37,6 +37,35 @@ function useDebounced<T>(value: T, delayMs: number): T {
   return debounced;
 }
 
+function NotificationBanner() {
+  const [latest, setLatest] = useState<{ summary: string; createdAt: string } | null>(null);
+
+  useEffect(() => {
+    api.notifications
+      .list()
+      .then((logs) => setLatest(logs[0] ?? null))
+      .catch(() => {
+        // silently skip — a failed notification fetch shouldn't block the rest of the page
+      });
+  }, []);
+
+  if (!latest) return null;
+  const isFailure = latest.summary.startsWith("⚠️");
+
+  return (
+    <div
+      className={`mb-4 rounded-md border px-3 py-2 text-sm ${
+        isFailure
+          ? "border-destructive/30 bg-destructive/5 text-destructive"
+          : "border bg-muted/40 text-muted-foreground"
+      }`}
+    >
+      <span className="font-medium">Last discovery run</span> ({new Date(latest.createdAt).toLocaleString()}):{" "}
+      {latest.summary}
+    </div>
+  );
+}
+
 export function Discovery() {
   const [postings, setPostings] = useState<Posting[]>([]);
   const [category, setCategory] = useState("all");
@@ -160,6 +189,7 @@ export function Discovery() {
 
   return (
     <div className="p-6">
+      <NotificationBanner />
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <div>
           <label className="mb-1 block text-xs font-medium text-muted-foreground">Category</label>

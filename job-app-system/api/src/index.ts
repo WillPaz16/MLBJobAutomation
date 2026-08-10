@@ -9,7 +9,8 @@ import { notificationsRouter } from "./routes/notifications.js";
 import { resumeBulletsRouter } from "./routes/resumeBullets.js";
 import { tonePresetsRouter } from "./routes/tonePresets.js";
 import { orgProfilesRouter } from "./routes/orgProfiles.js";
-import { HttpError } from "./asyncHandler.js";
+import { HttpError, asyncHandler } from "./asyncHandler.js";
+import { runDailyDiscovery, startScheduler } from "./scheduler.js";
 
 export function createApp() {
   const app = express();
@@ -26,6 +27,16 @@ export function createApp() {
   app.use("/api/org-profiles", orgProfilesRouter);
 
   app.get("/api/health", (_req, res) => res.json({ ok: true }));
+
+  // Manual trigger for the scheduled discovery job — useful for testing and for running it
+  // on demand without waiting for the daily schedule.
+  app.post(
+    "/api/scheduler/run-now",
+    asyncHandler(async (_req, res) => {
+      await runDailyDiscovery();
+      res.json({ ok: true });
+    })
+  );
 
   app.use((req, res) => {
     res.status(404).json({ error: `No route for ${req.method} ${req.path}` });
@@ -49,4 +60,6 @@ if (process.env.NODE_ENV !== "test") {
   const app = createApp();
   const port = process.env.PORT ?? 4000;
   app.listen(port, () => console.log(`API listening on :${port}`));
+
+  startScheduler();
 }

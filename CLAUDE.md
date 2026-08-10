@@ -6,10 +6,13 @@ React UI, all running on this machine — nothing is deployed anywhere.
 
 ## Layout
 
-- `job-app-system/api/` — Express API + Prisma/SQLite (`api/data/jobs.db`). `npm run dev` to serve on :4000.
+- `job-app-system/api/` — Express API + Prisma/SQLite (`api/data/jobs.db`). Also owns the daily
+  scheduler (`api/src/scheduler.ts`) and db backups (`api/src/backup.ts`) — see "Scheduling" below.
 - `job-app-system/scrapers/` — source adapters (Greenhouse, Lever, Workday, generic team-page) + `runDiscovery.ts`.
-- `job-app-system/ui/` — React (Vite) app. `npm run dev` to serve on :5173, proxies `/api` to :4000.
-- `job-app-system/scripts/daily-discovery.sh` — what the cron job runs; logs to `daily-discovery.log`.
+- `job-app-system/ui/` — React (Vite) app, proxies `/api` to :4000.
+- `job-app-system/package.json` — root-level only script is `npm run dev`, which boots api+ui
+  together via `concurrently`. `scrapers/` is invoked by the scheduler, not part of this.
+- `job-app-system/ecosystem.config.cjs` — pm2 config; supervises the API so it restarts on crash.
 
 ## Conventions
 
@@ -93,11 +96,14 @@ React UI, all running on this machine — nothing is deployed anywhere.
 ## Running things
 
 ```bash
-cd job-app-system/api && npm run dev            # API on :4000
-cd job-app-system/ui && npm run dev             # UI on :5173
-cd job-app-system/scrapers && npx tsx src/runDiscovery.ts   # one discovery run
-cd job-app-system/api && npm run import-documents           # (re)import Resumes/ + Cover Letters/
-npm test                                                     # in api/, scrapers/, or ui/ — vitest
+cd job-app-system && npm run dev                             # api + ui together, one command
+cd job-app-system && npx pm2 start ecosystem.config.cjs       # supervised API (survives crashes)
+cd job-app-system && npx pm2 startup                          # one-time, run yourself — survives reboot
+cd job-app-system/scrapers && npx tsx src/runDiscovery.ts     # one discovery run, outside the schedule
+cd job-app-system/api && npm run import-documents              # (re)import Resumes/ + Cover Letters/
+cd job-app-system/api && npm run seed-tailoring                # idempotent — seeds TonePreset defaults
+curl -X POST http://localhost:4000/api/scheduler/run-now       # trigger the daily job on demand
+npm test                                                       # in api/, scrapers/, or ui/ — vitest
 ```
 
 ## Skills
@@ -107,9 +113,27 @@ npm test                                                     # in api/, scrapers
 - `tailor-application` — draft a tailored resume/cover letter for a specific application, using
   the `ResumeBullet`/`TonePreset`/`OrgProfile` framework via the API (not raw `sqlite3`/`tsx -e`).
 
-## Scheduling
+## Scheduling, backups, and process supervision
 
-A macOS `cron` entry (not a Claude Code cron/routine — those can't reach localhost or local files)
-runs `job-app-system/scripts/daily-discovery.sh` daily at 8am. If it seems to have stopped firing,
-check that `cron` has Full Disk Access in System Settings → Privacy & Security, and that the Mac
-was awake at run time — cron does not run on a sleeping machine.
+- **Scheduling lives inside the API process** (`api/src/scheduler.ts`, via `node-cron`), not
+  macOS `cron` anymore — the old `job-app-system/scripts/daily-discovery.sh` and its crontab
+  entry were removed once this replaced them. The schedule (default 8am) runs as long as the
+  API process is up, which is what pm2 (below) is for.
+- **On failure, the scheduler writes a `NotificationLog` row** starting with `⚠️` for whichever
+  step failed (backup, scrape, or summary) — the Discovery page's banner reads the most recent
+  entry, so a failure is visible next time the app is opened, not just buried in a log file.
+- **`api/src/scheduler.ts` spawns the scraper as a child process with an explicit absolute
+  `DATABASE_URL` override.** Without this, the API's own `.env`-loaded `DATABASE_URL` (a path
+  relative to `api/prisma/`) leaks into the child process's environment and resolves to the
+  wrong file under `scrapers/prisma/` instead of the real `api/data/jobs.db` — this shipped
+  once as a real bug, caught by actually running the scheduler end-to-end, not by review.
+- **Backups** (`api/src/backup.ts`) run before every scheduled discovery — a timestamped copy of
+  `jobs.db` into `api/data/backups/`, keeping the most recent 14. `backupDatabase()` takes an
+  optional `dataDir` argument specifically so tests can point it at a temp directory — never call
+  it against the real `api/data` path from a test.
+- **Process supervision is pm2**, not a Claude Code cron/routine (those can't reach localhost or
+  local files). `pm2 start ecosystem.config.cjs` keeps the API running and restarts it on crash;
+  `pm2 startup` (a one-time command Will runs himself, since it modifies system launchd config)
+  makes it survive a reboot.
+- To trigger the scheduled job outside its normal 8am time (e.g. for testing), hit
+  `POST /api/scheduler/run-now` — it runs the exact same function the cron trigger calls.
