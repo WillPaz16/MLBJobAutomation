@@ -11,10 +11,11 @@ import { aaimtrackAdapter } from "../src/adapters/aaimtrack.js";
 import { teamworkOnlineAdapter } from "../src/adapters/teamworkonline.js";
 
 describe("greenhouseAdapter", () => {
-  it("maps jobs to NormalizedPosting", async () => {
+  it("maps jobs to NormalizedPosting, including description via content=true", async () => {
     server.use(
-      http.get("https://boards-api.greenhouse.io/v1/boards/testco/jobs", () =>
-        HttpResponse.json({
+      http.get("https://boards-api.greenhouse.io/v1/boards/testco/jobs", ({ request }) => {
+        expect(new URL(request.url).searchParams.get("content")).toBe("true");
+        return HttpResponse.json({
           jobs: [
             {
               id: 123,
@@ -22,10 +23,11 @@ describe("greenhouseAdapter", () => {
               absolute_url: "https://boards.greenhouse.io/testco/jobs/123",
               location: { name: "Remote" },
               updated_at: "2026-01-01T00:00:00Z",
+              content: "<p>Build data pipelines and models.</p>",
             },
           ],
-        })
-      )
+        });
+      })
     );
 
     const postings = await greenhouseAdapter.fetchPostings({
@@ -41,6 +43,7 @@ describe("greenhouseAdapter", () => {
       location: "Remote",
       category: "DATA_SCIENCE",
       url: "https://boards.greenhouse.io/testco/jobs/123",
+      description: "<p>Build data pipelines and models.</p>",
     });
   });
 
@@ -57,7 +60,7 @@ describe("greenhouseAdapter", () => {
 });
 
 describe("leverAdapter", () => {
-  it("maps postings to NormalizedPosting", async () => {
+  it("maps postings to NormalizedPosting, including descriptionPlain as description", async () => {
     server.use(
       http.get("https://api.lever.co/v0/postings/testco", () =>
         HttpResponse.json([
@@ -67,6 +70,8 @@ describe("leverAdapter", () => {
             hostedUrl: "https://jobs.lever.co/testco/abc-123",
             categories: { location: "New York, NY" },
             createdAt: 1735689600000,
+            description: "<div><b>Overview</b></div>",
+            descriptionPlain: "Overview: build ML models for production.",
           },
         ])
       )
@@ -82,6 +87,7 @@ describe("leverAdapter", () => {
       location: "New York, NY",
       category: "DATA_SCIENCE",
       url: "https://jobs.lever.co/testco/abc-123",
+      description: "Overview: build ML models for production.",
     });
   });
 
@@ -96,7 +102,7 @@ describe("leverAdapter", () => {
 });
 
 describe("workdayAdapter", () => {
-  it("paginates until an empty page and maps postings", async () => {
+  it("paginates until an empty page, maps postings, and fetches description from the detail endpoint", async () => {
     let callCount = 0;
     server.use(
       http.post("https://test.wd5.myworkdayjobs.com/wday/cxs/testtenant/TestSite/jobs", () => {
@@ -115,7 +121,14 @@ describe("workdayAdapter", () => {
           });
         }
         return HttpResponse.json({ total: 1, jobPostings: [] });
-      })
+      }),
+      http.get(
+        "https://test.wd5.myworkdayjobs.com/wday/cxs/testtenant/TestSite/job/City-ST/Baseball-Analytics-Fellow_R001",
+        () =>
+          HttpResponse.json({
+            jobPostingInfo: { jobDescription: "<p>Analyze player performance data.</p>" },
+          })
+      )
     );
 
     const postings = await workdayAdapter.fetchPostings({
@@ -133,7 +146,40 @@ describe("workdayAdapter", () => {
       location: "City, ST",
       category: "BASEBALL_ANALYTICS",
       url: "https://test.wd5.myworkdayjobs.com/en-US/TestSite/job/City-ST/Baseball-Analytics-Fellow_R001",
+      description: "<p>Analyze player performance data.</p>",
     });
+  });
+
+  it("still returns a posting with no description if the detail fetch fails", async () => {
+    server.use(
+      http.post("https://test.wd5.myworkdayjobs.com/wday/cxs/detailfailtenant/TestSite/jobs", () =>
+        HttpResponse.json({
+          total: 1,
+          jobPostings: [
+            {
+              title: "Usher",
+              externalPath: "/job/City-ST/Usher_R002",
+              locationsText: "City, ST",
+              bulletFields: ["R002"],
+            },
+          ],
+        })
+      ),
+      http.get(
+        "https://test.wd5.myworkdayjobs.com/wday/cxs/detailfailtenant/TestSite/job/City-ST/Usher_R002",
+        () => HttpResponse.json({}, { status: 500 })
+      )
+    );
+
+    const postings = await workdayAdapter.fetchPostings({
+      tenant: "detailfailtenant",
+      host: "test.wd5.myworkdayjobs.com",
+      site: "TestSite",
+      organizationName: "Test Team",
+    });
+
+    expect(postings).toHaveLength(1);
+    expect(postings[0].description).toBeUndefined();
   });
 
   it("throws on a non-OK response", async () => {

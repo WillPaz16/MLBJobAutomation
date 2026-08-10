@@ -27,12 +27,13 @@ React UI, all running on this machine — nothing is deployed anywhere.
   adapter code — see the `add-job-source` skill. Every adapter implements the same `Adapter`
   interface (`src/types.ts`) and returns `NormalizedPosting[]`; dedup happens once, centrally, in
   `ingest.ts` (keyed on `sourceId` + `externalId`), so adapters never need their own dedup logic.
-- **Never build scraping that defeats bot detection.** Teamwork Online (the main MLB/MiLB job
-  aggregator) sits behind Cloudflare and hangs/blocks headless requests — this is intentional on
-  their end and we don't route around it. Prefer hitting an org's underlying JSON API directly
-  (Greenhouse/Lever/Workday all expose one) over scraping rendered HTML; only fall back to the
-  generic Playwright team-page adapter when no such API exists, and only against sites that don't
-  require solving a challenge to load.
+- **Never build scraping that defeats bot detection.** Teamwork Online's own cross-org job search
+  sits behind Cloudflare and blocks headless/scripted requests — that's intentional and we don't
+  route around it. (Its individual team career pages are a different story — see the MLB coverage
+  bullet below for the full nuance on what's actually blocked vs. what just looked blocked.)
+  Prefer hitting an org's underlying JSON API directly (Greenhouse/Lever/Workday all expose one)
+  over scraping rendered HTML; only fall back to the generic Playwright team-page adapter when no
+  such API exists, and only against sites that don't require solving a challenge to load.
 - **No autonomous submission.** The system surfaces postings and drafts; a human always approves
   before anything is applied to. Don't add code paths that submit applications automatically.
 - **API validation lives in `api/src/validation.ts`** (zod schemas for `Posting.category` /
@@ -120,11 +121,19 @@ React UI, all running on this machine — nothing is deployed anywhere.
   still group/attribute like scraped ones, and dedupes on a sha256 hash of the URL via the same
   `sourceId`+`externalId` unique constraint everything else uses.
 - **`categorize()` takes an optional third `description` argument** — adapters that get a
-  description/summary field for free from their source API (currently only `ukg.ts`, via
-  `BriefDescription`) should pass it through; title+org alone missed real cases (e.g. a UKG
-  posting titled "Junior Product Designer" whose description said it was on the Dodgers'
-  Baseball R&D team). This only affects newly-ingested postings — existing rows aren't
-  retroactively recategorized when an adapter's description support improves.
+  description/summary field from their source API should pass it through; title+org alone missed
+  real cases (e.g. a UKG posting titled "Junior Product Designer" whose description said it was on
+  the Dodgers' Baseball R&D team). All adapters now pass it (`greenhouse.ts` requests
+  `?content=true`; `lever.ts` uses `descriptionPlain`; `workday.ts` does a per-posting detail fetch
+  since the list endpoint doesn't include it — `teamworkonline.ts`/`dayforce.ts`/`ukg.ts` already
+  had it). This only affects newly-ingested postings — existing rows aren't retroactively
+  recategorized when an adapter's description support improves.
+- **`categorize()`'s baseball-org branch has no unconditional default anymore.** It used to fall
+  back to `BASEBALL_OPS` whenever a baseball-org posting matched none of the R&D/analytics/ops
+  keywords — that miscategorized ushers, ticket sales, security, retail, and grounds-crew roles as
+  front-office jobs, burying the real `BASEBALL_OPS` tag under generic team-support postings. It
+  now falls through to `OTHER` instead, same as any other posting with no positive department
+  signal — no separate exclusion-keyword list needed, `OTHER` already existed for exactly this.
 - **When a source has no JSON API but also no bot protection, render + DOM-scrape it — don't
   reverse-engineer its internal API.** `teamPageAdapter.ts` (generic Playwright scraper) exists
   for exactly this. It's the right tool whenever a site is JS-heavy/complex but doesn't actively
@@ -140,9 +149,23 @@ React UI, all running on this machine — nothing is deployed anywhere.
   the source and destination column (not just the moved one) so `order` values stay contiguous
   per stage; a gap or duplicate silently breaks sort order for everyone else in that column.
 - **Tailoring framework** (`ResumeBullet`, `TonePreset`, `OrgProfile` models + their CRUD routes)
-  is a data model only — there's no UI for managing these yet, and generation is still a skill
-  (`tailor-application`), not an in-app button. Don't build an in-app "generate" button without
-  discussing scope first; that was explicitly deferred, not forgotten.
+  is still a data model with no management UI, and drafting is still a skill (`tailor-application`),
+  not an in-app "generate" button — that's still deliberately deferred (drafting stays
+  human-reviewed prose, not a deterministic matcher). What's new: `GET /api/applications/:id/
+  prep-context` (`api/src/routes/applications.ts`) joins posting + application + matched
+  `OrgProfile` + resolved `TonePreset` + active `ResumeBullet`s in one call, replacing 4 separate
+  curls the skill used to make. The UI's **Prep page** (`ui/src/pages/Prep.tsx`, `/prep`) lists
+  `REVIEWING` applications with no resume/cover doc attached yet — the actual "mass applying" time
+  save is visibility into that backlog (a "Copy prep prompt" button hands off to the skill), not
+  auto-drafting many applications unreviewed. The skill also now adds a short "personalized
+  talking points" section per application (3-5 bullets to paste into open-answer fields) —
+  deliberately not literal question extraction, since no adapter reliably exposes an application's
+  actual questions in parseable form across 5+ ATS shapes.
+- **The posting URL is surfaced directly in both Discovery's list rows and Pipeline's Kanban
+  cards** (a small `ExternalLink` icon/link using `posting.url`, no schema change — the relation
+  already existed) — previously it was one dialog-click deep in Discovery only and completely
+  absent from Pipeline, so getting back to the real job page meant re-finding the posting in
+  Discovery from scratch.
 - **Semantic/embedding-based job matching is deferred, not built.** Postgres/pgvector was
   evaluated and explicitly rejected — this system is nowhere near the data volume where a vector
   database would matter, brute-force cosine similarity in SQLite would be plenty if the feature

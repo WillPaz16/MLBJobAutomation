@@ -9,6 +9,15 @@ interface WorkdayJobPosting {
   bulletFields?: string[];
 }
 
+// The list endpoint above doesn't include a description — only the per-posting detail endpoint
+// does, under jobPostingInfo.jobDescription (confirmed via live curl against Chicago_Cubs_FO).
+async function fetchJobDescription(host: string, tenant: string, site: string, externalPath: string): Promise<string | undefined> {
+  const res = await fetch(`https://${host}/wday/cxs/${tenant}/${site}${externalPath}`);
+  if (!res.ok) return undefined;
+  const data = (await res.json()) as { jobPostingInfo?: { jobDescription?: string } };
+  return data.jobPostingInfo?.jobDescription;
+}
+
 interface WorkdayConfig {
   // e.g. for https://my1060wd.wd5.myworkdayjobs.com/Chicago_Cubs_FO
   //   tenant: "my1060wd", host: "my1060wd.wd5.myworkdayjobs.com", site: "Chicago_Cubs_FO"
@@ -43,13 +52,15 @@ export const workdayAdapter: Adapter = {
 
       for (const job of data.jobPostings) {
         const externalId = job.bulletFields?.[0] ?? job.externalPath;
+        const description = await fetchJobDescription(host, tenant, site, job.externalPath).catch(() => undefined);
         postings.push({
           externalId,
           title: job.title,
           organization: organizationName,
           location: job.locationsText,
-          category: categorize(job.title, organizationName),
+          category: categorize(job.title, organizationName, description),
           url: `https://${host}/en-US/${site}${job.externalPath}`,
+          description,
         });
       }
 

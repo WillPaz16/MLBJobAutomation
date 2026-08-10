@@ -19,12 +19,19 @@ describe("categorize", () => {
     expect(categorize("Pro Scouting Assistant", "Baltimore Orioles")).toBe("BASEBALL_OPS");
   });
 
-  it("falls back to BASEBALL_OPS for a baseball org role matching none of the specific regexes", () => {
-    expect(categorize("Guest Services Associate", "Atlanta Braves")).toBe("BASEBALL_OPS");
+  it("falls back to OTHER for a baseball org role matching none of the specific department regexes", () => {
+    // Previously fell through to an unconditional BASEBALL_OPS default — that buried the
+    // BASEBALL_OPS tag under generic team-support roles (ushers, ticket sales, security, retail).
+    expect(categorize("Guest Services Associate", "Atlanta Braves")).toBe("OTHER");
+    expect(categorize("Usher", "Kansas City Royals")).toBe("OTHER");
+    expect(categorize("Security Patrol Officer I", "Arizona Diamondbacks")).toBe("OTHER");
+    expect(categorize("Ticket Sales Associate", "Boston Red Sox")).toBe("OTHER");
   });
 
   it("does not misclassify a business-development role as R&D just because it shares 'development'", () => {
-    expect(categorize("Director, Business Development", "Atlanta Braves")).toBe("BASEBALL_OPS");
+    // No positive department signal beyond "development" (deliberately excluded from the R&D
+    // check) — falls to OTHER rather than being force-fit into BASEBALL_RND or BASEBALL_OPS.
+    expect(categorize("Director, Business Development", "Atlanta Braves")).toBe("OTHER");
   });
 
   it("classifies non-baseball data science roles", () => {
@@ -37,11 +44,11 @@ describe("categorize", () => {
     expect(categorize("Sales Associate", "Random Company")).toBe("OTHER");
   });
 
-  it("still buckets a non-role warehouse/retail posting at a baseball org as BASEBALL_OPS", () => {
-    // Org-name matching is intentionally broad (any hint substring counts as a baseball org),
-    // so an unrelated retail role at a team's merch subsidiary still lands in the OPS catch-all
-    // rather than OTHER — documents that tradeoff explicitly.
-    expect(categorize("Retail Truck Driver", "Atlanta Braves Team Store LLC")).toBe("BASEBALL_OPS");
+  it("buckets a non-role warehouse/retail posting at a baseball org's subsidiary as OTHER", () => {
+    // Org-name matching is intentionally broad (any hint substring counts as a baseball org), but
+    // that no longer forces an unrelated retail role into BASEBALL_OPS — it lands in OTHER like
+    // any other baseball-org posting with no positive department signal.
+    expect(categorize("Retail Truck Driver", "Atlanta Braves Team Store LLC")).toBe("OTHER");
   });
 
   it("is case-insensitive", () => {
@@ -58,6 +65,6 @@ describe("categorize", () => {
         "The Baseball Research and Development team of the Los Angeles Dodgers is dedicated to..."
       )
     ).toBe("BASEBALL_RND");
-    expect(categorize("Junior Product Designer", "Los Angeles Dodgers")).toBe("BASEBALL_OPS");
+    expect(categorize("Junior Product Designer", "Los Angeles Dodgers")).toBe("OTHER");
   });
 });

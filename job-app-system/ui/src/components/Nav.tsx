@@ -11,6 +11,7 @@ import {
 const links = [
   { to: "/", label: "Discovery" },
   { to: "/pipeline", label: "Pipeline" },
+  { to: "/prep", label: "Prep" },
   { to: "/documents", label: "Documents" },
   { to: "/analytics", label: "Analytics" },
 ];

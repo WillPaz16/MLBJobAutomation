@@ -12,7 +12,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { FileText, GripVertical, MapPin } from "lucide-react";
+import { ExternalLink, FileText, GripVertical, MapPin } from "lucide-react";
 import { api } from "../api/client";
 import type { Application, ApplicationStage, Document, PostingCategory } from "../api/types";
 import { Button } from "@/components/ui/button";
@@ -195,7 +195,7 @@ function CardBody({
             {application.posting.location}
           </div>
         )}
-        <div className="mt-2 flex gap-2">
+        <div className="mt-2 flex items-center gap-2">
           <button
             onClick={onToggleExpand}
             onPointerDown={(e) => e.stopPropagation()}
@@ -210,6 +210,19 @@ function CardBody({
           >
             Notes
           </button>
+          {application.posting?.url && (
+            <a
+              href={application.posting.url}
+              target="_blank"
+              rel="noreferrer"
+              onPointerDown={(e) => e.stopPropagation()}
+              className="ml-auto inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-primary hover:underline"
+              aria-label="Open original posting"
+              title="Open original posting"
+            >
+              <ExternalLink className="size-3" />
+            </a>
+          )}
         </div>
         {expanded && (
           <div onPointerDown={(e) => e.stopPropagation()}>

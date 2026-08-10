@@ -7,6 +7,7 @@ interface LeverJob {
   hostedUrl: string;
   categories?: { location?: string };
   createdAt?: number;
+  descriptionPlain?: string;
 }
 
 interface LeverConfig {
@@ -30,8 +31,9 @@ export const leverAdapter: Adapter = {
       title: job.text,
       organization: organizationName,
       location: job.categories?.location,
-      category: categorize(job.text, organizationName),
+      category: categorize(job.text, organizationName, job.descriptionPlain),
       url: job.hostedUrl,
+      description: job.descriptionPlain,
       postedAt: job.createdAt ? new Date(job.createdAt) : undefined,
     }));
   },

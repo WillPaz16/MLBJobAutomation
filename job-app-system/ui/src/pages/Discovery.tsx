@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../api/client";
 import type { Posting, PostingCategory } from "../api/types";
@@ -358,6 +359,16 @@ export function Discovery() {
                     {p.category.replace(/_/g, " ")}
                   </Badge>
                 </div>
+                <a
+                  href={p.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-1 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-primary hover:underline"
+                  aria-label={`Open original posting for ${p.title}`}
+                  title="Open original posting"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </a>
               </div>
               {p.applications.length === 0 ? (
                 <Button onClick={() => approve(p.id)} disabled={approvingIds.has(p.id)}>

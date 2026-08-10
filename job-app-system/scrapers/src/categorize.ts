@@ -49,7 +49,13 @@ export function categorize(
     if (/(r&d|research and development|\bresearch\b|biomech)/.test(haystack)) return "BASEBALL_RND";
     if (/(analytics|data scien|quant|analyst)/.test(haystack)) return "BASEBALL_ANALYTICS";
     if (/(operations|\bops\b|scouting|player development)/.test(haystack)) return "BASEBALL_OPS";
-    return "BASEBALL_OPS";
+    // No positive department signal — this is a real team job, but nothing suggests it's a
+    // front-office/baseball-ops role (ushers, ticket sales, security, retail, grounds crew, etc.
+    // all land here). Bucketing these as BASEBALL_OPS by default was a real bug: it buried the
+    // Discovery feed's BASEBALL_OPS tag under generic team-support roles. OTHER is the correct
+    // bucket for "real team job, not a front-office one" — no need for a separate, always-
+    // incomplete exclusion keyword list.
+    return "OTHER";
   }
 
   if (/(data scien|data analy|machine learning|ml engineer|analytics)/.test(haystack)) {

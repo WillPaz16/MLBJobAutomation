@@ -19,6 +19,40 @@ applicationsRouter.get(
   })
 );
 
+// Collapses the tailor-application skill's steps 1-4 (four separate curls: application+posting,
+// org profile, tone presets, resume bullets) into one call. ResumeBullet.category is a loose,
+// lowercase string ("baseball_analytics", "general") while Posting.category is the uppercase
+// PostingCategory value — matched case-insensitively, plus always including "general" bullets.
+applicationsRouter.get(
+  "/:id/prep-context",
+  asyncHandler(async (req, res) => {
+    const application = await prisma.application.findUnique({
+      where: { id: req.params.id },
+      include: { posting: true, resumeDoc: true, coverDoc: true },
+    });
+    if (!application) throw new HttpError(404, "Application not found");
+
+    const orgProfile = await prisma.orgProfile.findUnique({
+      where: { organizationName: application.posting.organization },
+      include: { preferredTone: true },
+    });
+
+    const tonePreset =
+      orgProfile?.preferredTone ??
+      (await prisma.tonePreset.findFirst({ where: { isDefault: true } }));
+
+    const postingCategoryLower = application.posting.category.toLowerCase();
+    const resumeBullets = await prisma.resumeBullet.findMany({
+      where: {
+        isActive: true,
+        OR: [{ category: postingCategoryLower }, { category: "general" }],
+      },
+    });
+
+    res.json({ application, orgProfile, tonePreset, resumeBullets });
+  })
+);
+
 applicationsRouter.patch(
   "/:id",
   asyncHandler(async (req, res) => {
