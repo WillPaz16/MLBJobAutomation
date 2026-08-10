@@ -57,44 +57,46 @@ React UI, all running on this machine — nothing is deployed anywhere.
   was confirmed with a live request against its actual API before being added (see the
   `add-job-source` skill). A trailing comment in that file lists teams confirmed to have no
   scrapable public API, so future sessions don't re-research the same dead ends.
-- **MLB coverage is 28/30 teams via scraping, ten platforms deep** — Greenhouse, Lever, Workday,
+- **MLB coverage is 30/30 teams via scraping, ten platforms deep** — Greenhouse, Lever, Workday,
   ADP (Workforce Now), UKG Pro Recruiting (aka UltiPro; hosts vary — `recruiting.ultipro.com`,
   `recruiting2.ultipro.com`, `<org>.rec.pro.ukg.net` are all the same platform/API shape),
   BambooHR, aaimtrack.com, TeamWork Online (team-specific career pages, plain HTTP — see below),
   and the generic `teamPageAdapter` (Playwright DOM scraping — covers Brewers/iCIMS,
   Padres/Hireology, and Twins/Paycor, none of which had a JSON API but none had bot protection
-  either). The remaining 2 teams (Royals/Diamondbacks, Dayforce HCM) have a real JSON API
-  (`POST /api/geo/<tenant>/jobposting/search`) that returns 403 on every scripted request —
-  including one replayed from inside the live page's own JS console with matching cookies —
-  while only genuine page-navigation-triggered requests succeed. That specific pattern (works for
-  real navigation, fails for any programmatic replay even from the same session) is active
-  anti-automation fingerprinting, not a missing field. Also checked and ruled out: the candidate
-  portal is a client-rendered SPA with no server-rendered JobPosting structured data, and no real
-  RSS/XML feed either (a `.rss` path just 200s the same SPA shell) — there's no static-content
-  fallback, only the blocked API. Treated as bot detection and not pursued further. See the
-  dead-end comment in `sources.config.ts` for the full detail.
-  **`teamworkonline.ts` reversed an earlier wrong conclusion**: Marlins/Reds were long assumed
-  blocked because TeamWork Online's platform-wide job search sits behind Cloudflare — but each
-  team's own career page (`teamworkonline.com/baseball-jobs/<org>/<org>`) is plain server-rendered
-  HTML with a real browser `User-Agent` header, no challenge, and a clean schema.org `JobPosting`
-  JSON-LD block per listing. **Generalizable lesson: always try a plain `fetch` with a real
-  browser User-Agent before concluding a site needs Playwright or has bot detection** — a missing
-  or generic UA can look identical to a real block until you test with one. That's a different
-  failure mode than genuine anti-automation fingerprinting (Dayforce: works for real navigation,
-  fails on any scripted replay even with matching cookies/session) — only the latter should be
-  treated as a hard stop. **No JSON API ≠ dead end, and "blocked" on one page of a platform ≠
-  blocked on all of it — only active bot detection against the specific page you need is.**
-  Twelve teams (Yankees, Dodgers, Pirates, Rockies, Astros, Angels, Nationals, White Sox, Rays via
-  ADP/UKG, Blue Jays via BambooHR, Brewers/Padres/Twins via `teamPageAdapter`) were previously
-  miscategorized as dead ends because the research only checked the mlb.com career page instead
-  of following the actual "Apply Now" redirect, which goes to the team's real career site — from
-  there, try a plain fetch with a real User-Agent first, then look for the JSON API (browser
-  network capture, not curl-guessing — client-rendered apps like aaimtrack's Vue SPA don't reveal
-  their API to curl at all), and only reach for Playwright DOM-scraping (`teamPageAdapter`) if the
-  page is genuinely client-rendered but has no bot protection. The honest way to close what's
-  actually left is the manual flow
-  (`POST /api/postings/manual`, "Add posting manually" on Discovery), not more scraping attempts —
-  it creates a `Source` row of `type: "manual"` per organization (`manual:<org>`) so manual entries
+  either). **No dead ends remain**, though the investigation into the last two (Royals/
+  Diamondbacks) is worth keeping in mind for any future "this site is blocked" claim: both post
+  jobs to Dayforce HCM (`jobs.dayforcehcm.com`), which genuinely IS bot-protected (a real JSON
+  API, `POST /api/geo/<tenant>/jobposting/search`, returns 403 on every scripted request —
+  including one replayed from inside the live page's own JS console with matching cookies — while
+  only genuine page-navigation-triggered requests succeed; the candidate portal is also a
+  client-rendered SPA with no server-rendered JobPosting data and no real RSS/XML feed as a
+  fallback). But both teams' own official mlb.com career pages *also* link out to a TeamWork
+  Online listing — found by reading the actual "View Postings" apply link rather than assuming
+  Dayforce was their only source — so coverage didn't actually depend on cracking Dayforce.
+  **`teamworkonline.ts` reversed an earlier wrong conclusion**: Marlins/Reds/Royals/Diamondbacks
+  were long assumed blocked because TeamWork Online's platform-wide job search sits behind
+  Cloudflare — but each team's own career page (`teamworkonline.com/baseball-jobs/<org>/<org>`) is
+  plain server-rendered HTML with a real browser `User-Agent` header, no challenge, and a clean
+  schema.org `JobPosting` JSON-LD block per listing. **Generalizable lessons for any future
+  "blocked" site:** (1) always try a plain `fetch` with a real browser User-Agent before
+  concluding a site needs Playwright or has bot detection — a missing/generic UA can look
+  identical to a real block; that's a different failure mode than genuine anti-automation
+  fingerprinting (Dayforce: works for real navigation, fails on any scripted replay even with
+  matching cookies/session), and only the latter is a real hard stop. (2) A team can have more
+  than one legitimate posting source — a bot-protected one (Dayforce) doesn't rule out a
+  scrapable one existing alongside it; check the org's own career page for every outbound apply
+  link, not just the first one found. **No JSON API ≠ dead end, and "blocked" on one page of a
+  platform ≠ blocked on all of it.** Twelve other teams (Yankees, Dodgers, Pirates, Rockies,
+  Astros, Angels, Nationals, White Sox, Rays via ADP/UKG, Blue Jays via BambooHR,
+  Brewers/Padres/Twins via `teamPageAdapter`) were previously miscategorized as dead ends because
+  the research only checked the mlb.com career page instead of following the actual "Apply Now"
+  redirect. When adding a source: try a plain fetch with a real User-Agent first, then look for a
+  JSON API (browser network capture, not curl-guessing — client-rendered apps like aaimtrack's Vue
+  SPA don't reveal their API to curl at all), and only reach for Playwright DOM-scraping
+  (`teamPageAdapter`) if the page is genuinely client-rendered but has no bot protection. If a
+  team's coverage ever needs closing again for some other reason, the manual flow
+  (`POST /api/postings/manual`, "Add posting manually" on Discovery) exists for exactly that — it
+  creates a `Source` row of `type: "manual"` per organization (`manual:<org>`) so manual entries
   still group/attribute like scraped ones, and dedupes on a sha256 hash of the URL via the same
   `sourceId`+`externalId` unique constraint everything else uses.
 - **`categorize()` takes an optional third `description` argument** — adapters that get a
