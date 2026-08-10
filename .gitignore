@@ -2,9 +2,18 @@ node_modules/
 dist/
 build/
 .env
+# api/.env and scrapers/.env only hold a local sqlite DATABASE_URL (no secrets) and are required
+# for Prisma to work out of the box on a fresh clone — track them despite the blanket rule above.
+!job-app-system/api/.env
+!job-app-system/scrapers/.env
 .DS_Store
+.claude/scheduled_tasks.lock
 job-app-system/api/data/*.db
 job-app-system/api/data/*.db-journal
+job-app-system/api/prisma/test.db
+job-app-system/api/prisma/test.db-journal
+job-app-system/scrapers/prisma/test.db
+job-app-system/scrapers/prisma/test.db-journal
 *.log
 job-app-system/scripts/daily-discovery.log
 

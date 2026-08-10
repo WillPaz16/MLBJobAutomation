@@ -1,6 +1,6 @@
 datasource db {
   provider = "sqlite"
-  url      = "file:../../api/data/jobs.db"
+  url      = env("DATABASE_URL")
 }
 
 generator client {

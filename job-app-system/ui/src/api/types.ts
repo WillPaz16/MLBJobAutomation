@@ -65,4 +65,5 @@ export interface AnalyticsSummary {
   byStage: Record<string, number>;
   bySource: Record<string, number>;
   avgResponseDays: number | null;
+  avgResponseDaysByStage: Record<string, number>;
 }

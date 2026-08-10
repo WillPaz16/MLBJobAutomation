@@ -40,9 +40,11 @@ export function categorize(title: string, organization: string): NormalizedPosti
   const isBaseballOrg = BASEBALL_ORG_HINTS.some((hint) => haystack.includes(hint));
 
   if (isBaseballOrg) {
-    if (/(r&d|research|development|biomech)/.test(haystack)) return "BASEBALL_RND";
+    // Bare "development" is deliberately excluded from the R&D check — it over-matches
+    // business/sponsorship development roles that have nothing to do with baseball R&D.
+    if (/(r&d|research and development|\bresearch\b|biomech)/.test(haystack)) return "BASEBALL_RND";
     if (/(analytics|data scien|quant|analyst)/.test(haystack)) return "BASEBALL_ANALYTICS";
-    if (/(operations|ops|scouting|player dev)/.test(haystack)) return "BASEBALL_OPS";
+    if (/(operations|\bops\b|scouting|player development)/.test(haystack)) return "BASEBALL_OPS";
     return "BASEBALL_OPS";
   }
 

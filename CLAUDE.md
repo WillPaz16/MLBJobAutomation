@@ -32,6 +32,28 @@ React UI, all running on this machine — nothing is deployed anywhere.
   require solving a challenge to load.
 - **No autonomous submission.** The system surfaces postings and drafts; a human always approves
   before anything is applied to. Don't add code paths that submit applications automatically.
+- **API validation lives in `api/src/validation.ts`** (zod schemas for `Posting.category` /
+  `Application.stage` / document creation / pagination) — import from there rather than
+  redefining the valid-value lists inline. Routes are wrapped in `asyncHandler` (`api/src/
+  asyncHandler.ts`) so thrown/rejected errors reach the centralized error middleware in
+  `index.ts` and come back as JSON, not Express's default HTML error page.
+- **The UI's shadcn/ui setup uses Base UI, not Radix**, despite `shadcn` being the CLI/registry
+  name — check a generated component's source before assuming Radix conventions. Concretely:
+  compose with the `render={<Element />}` prop instead of `asChild` + a child element, and menu
+  items fire `onClick`, not Radix's `onSelect` (using `onSelect` silently no-ops — this exact
+  bug shipped once and was only caught by clicking through the UI, not by typecheck).
+- **Dark mode is class-based** (`.dark` on `<html>`), set via `main.tsx` mirroring
+  `prefers-color-scheme` — there's no in-app toggle yet, so don't assume `dark:` Tailwind
+  classes alone are sufficient without that class-sync effect in place.
+- **Test databases**: each package with tests (`api`, `scrapers`) points `DATABASE_URL` at a
+  throwaway `prisma/test.db` (via `.env` + a test setup file), migrated fresh per run and deleted
+  after. `scrapers/prisma` has no `migrations/` directory (it only ever shared `api`'s already-
+  migrated DB) — its test setup uses `prisma db push`, not `migrate deploy`, for that reason.
+  Never point a test DATABASE_URL at the real `data/jobs.db`.
+- **`sources.config.ts` entries are curl-verified, not guessed.** Every org currently in that file
+  was confirmed with a live request against its actual API before being added (see the
+  `add-job-source` skill). A trailing comment in that file lists teams confirmed to have no
+  scrapable public API, so future sessions don't re-research the same dead ends.
 
 ## Running things
 
@@ -40,6 +62,7 @@ cd job-app-system/api && npm run dev            # API on :4000
 cd job-app-system/ui && npm run dev             # UI on :5173
 cd job-app-system/scrapers && npx tsx src/runDiscovery.ts   # one discovery run
 cd job-app-system/api && npm run import-documents           # (re)import Resumes/ + Cover Letters/
+npm test                                                     # in api/, scrapers/, or ui/ — vitest
 ```
 
 ## Skills

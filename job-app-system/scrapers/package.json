@@ -3,21 +3,26 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "run-discovery": "tsx src/runDiscovery.ts"
+    "run-discovery": "tsx src/runDiscovery.ts",
+    "test": "vitest run"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
     "playwright": "^1.48.0"
   },
   "devDependencies": {
+    "@types/node": "^22.7.4",
+    "msw": "^2.15.0",
+    "prisma": "^5.22.0",
     "tsx": "^4.19.1",
     "typescript": "^5.6.2",
-    "@types/node": "^22.7.4",
-    "prisma": "^5.22.0"
+    "vitest": "^4.1.10"
   },
   "allowScripts": {
     "@prisma/client@5.22.0": true,
     "esbuild@0.28.2": true,
-    "prisma@5.22.0": true
+    "prisma@5.22.0": true,
+    "@prisma/engines@5.22.0": true,
+    "msw@2.15.0": true
   }
 }
