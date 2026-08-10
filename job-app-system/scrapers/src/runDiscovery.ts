@@ -1,8 +1,17 @@
 import { greenhouseAdapter } from "./adapters/greenhouse.js";
 import { leverAdapter } from "./adapters/lever.js";
 import { workdayAdapter } from "./adapters/workday.js";
+import { adpAdapter } from "./adapters/adp.js";
+import { ukgAdapter } from "./adapters/ukg.js";
 import { teamPageAdapter } from "./adapters/teamPage.js";
-import { greenhouseSources, leverSources, workdaySources, teamPageSources } from "./sources.config.js";
+import {
+  greenhouseSources,
+  leverSources,
+  workdaySources,
+  adpSources,
+  ukgSources,
+  teamPageSources,
+} from "./sources.config.js";
 import { getOrCreateSource, ingestPostings } from "./ingest.js";
 import { prisma } from "./db.js";
 import type { Adapter } from "./types.js";
@@ -30,6 +39,8 @@ async function main() {
     runAdapter(greenhouseAdapter, greenhouseSources),
     runAdapter(leverAdapter, leverSources),
     runAdapter(workdayAdapter, workdaySources),
+    runAdapter(adpAdapter, adpSources),
+    runAdapter(ukgAdapter, ukgSources),
     runAdapter(teamPageAdapter, teamPageSources),
   ]);
   const inserted = results.reduce((a, b) => a + b, 0);

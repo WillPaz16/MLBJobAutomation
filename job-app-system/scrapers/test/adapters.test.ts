@@ -4,6 +4,8 @@ import { server } from "./mockServer.js";
 import { greenhouseAdapter } from "../src/adapters/greenhouse.js";
 import { leverAdapter } from "../src/adapters/lever.js";
 import { workdayAdapter } from "../src/adapters/workday.js";
+import { adpAdapter } from "../src/adapters/adp.js";
+import { ukgAdapter } from "../src/adapters/ukg.js";
 
 describe("greenhouseAdapter", () => {
   it("maps jobs to NormalizedPosting", async () => {
@@ -145,5 +147,104 @@ describe("workdayAdapter", () => {
         organizationName: "Bad Co",
       })
     ).rejects.toThrow(/Workday fetch failed/);
+  });
+});
+
+describe("adpAdapter", () => {
+  it("maps job requisitions to NormalizedPosting", async () => {
+    server.use(
+      http.get("https://workforcenow.adp.com/mascsr/default/careercenter/public/events/staffing/v1/job-requisitions", () =>
+        HttpResponse.json({
+          jobRequisitions: [
+            {
+              itemID: "123_1",
+              requisitionTitle: "Data Analyst, Baseball Analytics",
+              postDate: "2026-01-01T00:00:00.000-04:00",
+              requisitionLocations: [{ nameCode: { shortName: " The Bronx, NY, US" } }],
+            },
+          ],
+        })
+      )
+    );
+
+    const postings = await adpAdapter.fetchPostings({
+      client: "testco",
+      cid: "test-cid",
+      organizationName: "Test Team",
+    });
+
+    expect(postings).toHaveLength(1);
+    expect(postings[0]).toMatchObject({
+      externalId: "123_1",
+      title: "Data Analyst, Baseball Analytics",
+      organization: "Test Team",
+      location: "The Bronx, NY, US",
+      category: "BASEBALL_ANALYTICS",
+    });
+    expect(postings[0].url).toContain("ccId=123_1");
+  });
+
+  it("throws on a non-OK response", async () => {
+    server.use(
+      http.get("https://workforcenow.adp.com/mascsr/default/careercenter/public/events/staffing/v1/job-requisitions", () =>
+        HttpResponse.json({}, { status: 500 })
+      )
+    );
+    await expect(
+      adpAdapter.fetchPostings({ client: "bad", cid: "bad-cid", organizationName: "Bad Co" })
+    ).rejects.toThrow(/ADP fetch failed/);
+  });
+});
+
+describe("ukgAdapter", () => {
+  it("maps opportunities to NormalizedPosting", async () => {
+    server.use(
+      http.post("https://test.ukg.example/testtenant/JobBoard/board-1/JobBoardView/LoadSearchResults", () =>
+        HttpResponse.json({
+          opportunities: [
+            {
+              Id: "opp-1",
+              Title: "Baseball R&D Software Engineer",
+              RequisitionNumber: "REQ001",
+              PostedDate: "2026-01-01T00:00:00.000Z",
+              Locations: [{ Address: { City: "Los Angeles", State: { Code: "CA" } } }],
+            },
+          ],
+        })
+      )
+    );
+
+    const postings = await ukgAdapter.fetchPostings({
+      host: "test.ukg.example",
+      tenant: "testtenant",
+      boardId: "board-1",
+      organizationName: "Test Team",
+    });
+
+    expect(postings).toHaveLength(1);
+    expect(postings[0]).toMatchObject({
+      externalId: "opp-1",
+      title: "Baseball R&D Software Engineer",
+      organization: "Test Team",
+      location: "Los Angeles, CA",
+      category: "BASEBALL_RND",
+    });
+    expect(postings[0].url).toContain("opportunityId=opp-1");
+  });
+
+  it("throws on a non-OK response", async () => {
+    server.use(
+      http.post("https://test.ukg.example/badtenant/JobBoard/board-2/JobBoardView/LoadSearchResults", () =>
+        HttpResponse.json({}, { status: 500 })
+      )
+    );
+    await expect(
+      ukgAdapter.fetchPostings({
+        host: "test.ukg.example",
+        tenant: "badtenant",
+        boardId: "board-2",
+        organizationName: "Bad Co",
+      })
+    ).rejects.toThrow(/UKG fetch failed/);
   });
 });

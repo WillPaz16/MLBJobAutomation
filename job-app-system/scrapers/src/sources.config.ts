@@ -36,8 +36,38 @@ export const workdaySources: { tenant: string; host: string; site: string; organ
   { tenant: "ilitch", host: "ilitch.wd5.myworkdayjobs.com", site: "Detroit-Tigers", organizationName: "Detroit Tigers" },
 ];
 
-// Team career pages not on Greenhouse/Lever/Workday. Validate selectors against the live
-// page before adding an entry here — see teamPage.ts adapter docs for the config contract.
+// ADP (Workforce Now career center): find client/cid from the org's career center URL —
+// workforcenow.adp.com/.../recruitment.html?...&client=<client>&cid=<cid>&...
+export const adpSources: { client: string; cid: string; organizationName: string }[] = [
+  { client: "nyyanks", cid: "5ebae4fe-1105-47a5-b26d-e74868af6e86", organizationName: "New York Yankees" },
+];
+
+// UKG Pro Recruiting (formerly UltiPro) — host varies by org (recruiting.ultipro.com,
+// recruiting2.ultipro.com, or <org>.rec.pro.ukg.net), find tenant/boardId from the org's
+// careers URL: https://<host>/<tenant>/JobBoard/<boardId>/...
+export const ukgSources: { host: string; tenant: string; boardId: string; organizationName: string }[] = [
+  {
+    host: "recruiting.ultipro.com",
+    tenant: "LOS1000LADOD",
+    boardId: "5365ad6e-23ff-4703-bb77-1e9451fb855e",
+    organizationName: "Los Angeles Dodgers",
+  },
+  {
+    host: "pirates.rec.pro.ukg.net",
+    tenant: "PIT1500PITA",
+    boardId: "1571bce9-cb30-4961-98da-07b26506146a",
+    organizationName: "Pittsburgh Pirates",
+  },
+  {
+    host: "recruiting2.ultipro.com",
+    tenant: "COL1047COLBA",
+    boardId: "17b65dc7-8957-462f-bbe5-957d054a4367",
+    organizationName: "Colorado Rockies",
+  },
+];
+
+// Team career pages not on Greenhouse/Lever/Workday/ADP/UKG. Validate selectors against the
+// live page before adding an entry here — see teamPage.ts adapter docs for the config contract.
 export const teamPageSources: {
   organizationName: string;
   listUrl: string;
@@ -49,14 +79,17 @@ export const teamPageSources: {
 
 // Confirmed NOT to have a scrapable public API — re-verified live (not carried over from
 // stale research), each tagged with its real platform so a future session doesn't waste time
-// re-checking these or reaching for a workaround. 18 of 30 MLB teams land here; the honest way
+// re-checking these or reaching for a workaround. 14 of 30 MLB teams land here; the honest way
 // to cover them in the tracker is the manual "add posting by URL" flow (POST /api/postings/manual),
 // not more scraping — none of these expose a public JSON job-search API to hit directly:
-//   Teamwork Online only (no public API): Yankees, Dodgers, Astros, Angels, Marlins, Nationals,
-//     Reds, Brewers, Royals, White Sox, Diamondbacks, Rays
-//   Pittsburgh Pirates — UKG (host ukg.net, tenant PIT1500PITA)
-//   Colorado Rockies — UKG (internal board only, no external tenant surfaced)
+//   Teamwork Online only (no public API): Astros, Angels, Marlins, Nationals, Reds, Brewers,
+//     Royals, White Sox, Diamondbacks, Rays
 //   Minnesota Twins — Paycor (recruitingbypaycor.com)
 //   St. Louis Cardinals — aaimtrack.com (tenant stlcardinals)
 //   Toronto Blue Jays — SAP SuccessFactors, via jobs.rogers.com
 //   San Diego Padres — Hireology (careers.hireology.com/sandiegopadres)
+//
+// Yankees (ADP), Dodgers/Pirates/Rockies (UKG) were previously miscategorized as dead ends —
+// corrected once Will found real career-center links and we found their actual public APIs.
+// Worth re-checking any remaining "Teamwork Online only" team the same way (find the org's
+// actual outbound "Apply" redirect rather than trusting an mlb.com page never links off-platform).

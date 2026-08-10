@@ -57,15 +57,27 @@ React UI, all running on this machine — nothing is deployed anywhere.
   was confirmed with a live request against its actual API before being added (see the
   `add-job-source` skill). A trailing comment in that file lists teams confirmed to have no
   scrapable public API, so future sessions don't re-research the same dead ends.
-- **MLB coverage caps at ~12/30 teams via scraping — this is expected, not a gap to keep chasing.**
-  18 teams sit behind Teamwork Online or a closed single-employer ATS (UKG, Paycor, aaimtrack,
+- **MLB coverage is 16/30 teams via scraping, six platforms deep** — Greenhouse, Lever, Workday,
+  ADP (Workforce Now), and UKG Pro Recruiting (aka UltiPro; hosts vary — `recruiting.ultipro.com`,
+  `recruiting2.ultipro.com`, `<org>.rec.pro.ukg.net` are all the same platform/API shape). The
+  remaining 14 teams sit behind Teamwork Online or a closed single-employer ATS (Paycor, aaimtrack,
   SAP SuccessFactors, Hireology) with no public JSON API — see the dead-end comment in
-  `sources.config.ts` for exactly which team is on which platform. The honest way to reach 30/30
-  in the tracker is the manual flow (`POST /api/postings/manual`, "Add posting manually" on
-  Discovery), not more scraping attempts — it creates a `Source` row of `type: "manual"` per
-  organization (`manual:<org>`) so manual entries still group/attribute like scraped ones, and
-  dedupes on a sha256 hash of the URL via the same `sourceId`+`externalId` unique constraint
-  everything else uses.
+  `sources.config.ts` for exactly which team is on which platform. **Don't trust an mlb.com team
+  page alone to say a team is Teamwork-Online-only** — four teams (Yankees, Dodgers, Pirates,
+  Rockies) were previously miscategorized as dead ends because the research only checked the
+  mlb.com career page instead of following the actual "Apply Now" redirect, which goes to the
+  team's real ATS. When re-checking a "dead end," click through to the real apply flow, not just
+  the landing page. The honest way to close the remaining gap is the manual flow
+  (`POST /api/postings/manual`, "Add posting manually" on Discovery), not more scraping attempts —
+  it creates a `Source` row of `type: "manual"` per organization (`manual:<org>`) so manual entries
+  still group/attribute like scraped ones, and dedupes on a sha256 hash of the URL via the same
+  `sourceId`+`externalId` unique constraint everything else uses.
+- **`categorize()` takes an optional third `description` argument** — adapters that get a
+  description/summary field for free from their source API (currently only `ukg.ts`, via
+  `BriefDescription`) should pass it through; title+org alone missed real cases (e.g. a UKG
+  posting titled "Junior Product Designer" whose description said it was on the Dodgers'
+  Baseball R&D team). This only affects newly-ingested postings — existing rows aren't
+  retroactively recategorized when an adapter's description support improves.
 - **`Application.order`** is an integer position within its stage column, maintained by the UI
   (Pipeline.tsx) on every drag/stage-move — always re-sequence ALL affected applications in both
   the source and destination column (not just the moved one) so `order` values stay contiguous

@@ -35,8 +35,12 @@ const BASEBALL_ORG_HINTS = [
   "diamondbacks",
 ];
 
-export function categorize(title: string, organization: string): NormalizedPosting["category"] {
-  const haystack = `${title} ${organization}`.toLowerCase();
+export function categorize(
+  title: string,
+  organization: string,
+  description?: string
+): NormalizedPosting["category"] {
+  const haystack = `${title} ${organization} ${description ?? ""}`.toLowerCase();
   const isBaseballOrg = BASEBALL_ORG_HINTS.some((hint) => haystack.includes(hint));
 
   if (isBaseballOrg) {

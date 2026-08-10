@@ -47,4 +47,17 @@ describe("categorize", () => {
   it("is case-insensitive", () => {
     expect(categorize("DATA SCIENTIST", "SOME COMPANY")).toBe("DATA_SCIENCE");
   });
+
+  it("uses the description to classify a title that gives no signal on its own", () => {
+    // Real case: a UKG posting titled "Junior Product Designer" whose description says it's
+    // on the Dodgers' Baseball Research and Development team — title alone gives BASEBALL_OPS.
+    expect(
+      categorize(
+        "Junior Product Designer",
+        "Los Angeles Dodgers",
+        "The Baseball Research and Development team of the Los Angeles Dodgers is dedicated to..."
+      )
+    ).toBe("BASEBALL_RND");
+    expect(categorize("Junior Product Designer", "Los Angeles Dodgers")).toBe("BASEBALL_OPS");
+  });
 });
