@@ -40,6 +40,7 @@ export const workdaySources: { tenant: string; host: string; site: string; organ
 // workforcenow.adp.com/.../recruitment.html?...&client=<client>&cid=<cid>&...
 export const adpSources: { client: string; cid: string; organizationName: string }[] = [
   { client: "nyyanks", cid: "5ebae4fe-1105-47a5-b26d-e74868af6e86", organizationName: "New York Yankees" },
+  { client: "tbrays", cid: "d4e6b608-831f-4a04-bdb6-f61493552d27", organizationName: "Tampa Bay Rays" },
 ];
 
 // UKG Pro Recruiting (formerly UltiPro) — host varies by org (recruiting.ultipro.com,
@@ -82,10 +83,21 @@ export const ukgSources: { host: string; tenant: string; boardId: string; organi
     boardId: "769be41b-7ab1-40e5-b837-33d7c87b5787",
     organizationName: "Washington Nationals",
   },
+  {
+    host: "recruiting2.ultipro.com",
+    tenant: "CHI1000CWS",
+    boardId: "8e2339b4-b699-46e9-8b91-e3e826e53794",
+    organizationName: "Chicago White Sox",
+  },
 ];
 
-// Team career pages not on Greenhouse/Lever/Workday/ADP/UKG. Validate selectors against the
-// live page before adding an entry here — see teamPage.ts adapter docs for the config contract.
+// BambooHR careers API — find <company> from the org's careers URL: <company>.bamboohr.com/careers.
+export const bambooHrSources: { company: string; organizationName: string }[] = [
+  { company: "torontobluejays", organizationName: "Toronto Blue Jays" },
+];
+
+// Team career pages not on Greenhouse/Lever/Workday/ADP/UKG/BambooHR. Validate selectors against
+// the live page before adding an entry here — see teamPage.ts adapter docs for the config contract.
 export const teamPageSources: {
   organizationName: string;
   listUrl: string;
@@ -95,20 +107,29 @@ export const teamPageSources: {
   locationSelector?: string;
 }[] = [];
 
-// Confirmed NOT to have a scrapable public API — re-verified live (not carried over from
+// Confirmed NOT to have a scrapable public JSON API — re-verified live (not carried over from
 // stale research), each tagged with its real platform so a future session doesn't waste time
-// re-checking these or reaching for a workaround. 11 of 30 MLB teams land here; the honest way
+// re-checking these or reaching for a workaround. 8 of 30 MLB teams land here; the honest way
 // to cover them in the tracker is the manual "add posting by URL" flow (POST /api/postings/manual),
-// not more scraping — none of these expose a public JSON job-search API to hit directly:
-//   Teamwork Online only (no public API): Marlins, Reds, Brewers, Royals, White Sox,
-//     Diamondbacks, Rays
-//   Minnesota Twins — Paycor (recruitingbypaycor.com)
-//   St. Louis Cardinals — aaimtrack.com (tenant stlcardinals)
-//   Toronto Blue Jays — SAP SuccessFactors, via jobs.rogers.com
-//   San Diego Padres — Hireology (careers.hireology.com/sandiegopadres)
+// not more scraping attempts:
+//   Teamwork Online / Indeed only (no public API, confirmed by direct apply-flow check): Marlins, Reds
+//   Milwaukee Brewers — iCIMS, server-rendered HTML nested in iframes (careers-brewers.icims.com).
+//     No JSON API found; a genuine candidate for the teamPageAdapter (Playwright) if ever built out —
+//     not a bot-detection wall, just needs real browser rendering + iframe traversal.
+//   Kansas City Royals / Arizona Diamondbacks — Dayforce HCM (jobs.dayforcehcm.com). Has a real
+//     JSON API (POST /api/geo/<tenant>/jobposting/search, confirmed via browser network capture)
+//     but returns 403 on every request-body shape tried without full devtools payload capture —
+//     needs a session with real devtools access to capture the exact required request shape
+//     (likely a required header or exact field set) before it's worth an adapter.
+//   Minnesota Twins — Paycor (recruitingbypaycor.com/recruitingbypaycor's API returned 401
+//     Unauthorized, requires a JWT — not a public API).
+//   St. Louis Cardinals — aaimtrack.com (Vue SPA, client-rendered; no JSON API found at the
+//     obvious endpoint — would need browser network capture like Dayforce to find the real one).
+//   San Diego Padres — Hireology (careers.hireology.com/sandiegopadres; guessed API endpoint
+//     404'd — same treatment as Cardinals/aaimtrack would be needed).
 //
-// Yankees (ADP), Dodgers/Pirates/Rockies/Astros/Angels/Nationals (UKG) were previously
-// miscategorized as dead ends — corrected once Will found real career-center links and we found
-// their actual public APIs. Worth re-checking any remaining "Teamwork Online only" team the same
-// way (find the org's actual outbound "Apply" redirect rather than trusting an mlb.com page
-// that never links off-platform).
+// Yankees/Rays (ADP), Dodgers/Pirates/Rockies/Astros/Angels/Nationals/White Sox (UKG), and
+// Toronto Blue Jays (BambooHR) were previously miscategorized as dead ends — corrected once Will
+// found real career-center links and we found their actual public APIs. Keep re-checking any
+// remaining "Teamwork Online only" team the same way (find the org's actual outbound "Apply"
+// redirect rather than trusting an mlb.com page that never links off-platform).

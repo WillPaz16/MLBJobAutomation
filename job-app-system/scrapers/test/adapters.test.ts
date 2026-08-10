@@ -6,6 +6,7 @@ import { leverAdapter } from "../src/adapters/lever.js";
 import { workdayAdapter } from "../src/adapters/workday.js";
 import { adpAdapter } from "../src/adapters/adp.js";
 import { ukgAdapter } from "../src/adapters/ukg.js";
+import { bambooHrAdapter } from "../src/adapters/bamboohr.js";
 
 describe("greenhouseAdapter", () => {
   it("maps jobs to NormalizedPosting", async () => {
@@ -246,5 +247,49 @@ describe("ukgAdapter", () => {
         organizationName: "Bad Co",
       })
     ).rejects.toThrow(/UKG fetch failed/);
+  });
+});
+
+describe("bambooHrAdapter", () => {
+  it("maps career listings to NormalizedPosting", async () => {
+    server.use(
+      http.get("https://testco.bamboohr.com/careers/list", () =>
+        HttpResponse.json({
+          meta: { totalCount: 1 },
+          result: [
+            {
+              id: "42",
+              jobOpeningName: "Baseball Analytics Fellow",
+              departmentLabel: "Baseball Operations",
+              location: { city: "Toronto", state: "Ontario" },
+            },
+          ],
+        })
+      )
+    );
+
+    const postings = await bambooHrAdapter.fetchPostings({
+      company: "testco",
+      organizationName: "Test Team",
+    });
+
+    expect(postings).toHaveLength(1);
+    expect(postings[0]).toMatchObject({
+      externalId: "42",
+      title: "Baseball Analytics Fellow",
+      organization: "Test Team",
+      location: "Toronto, Ontario",
+      category: "BASEBALL_ANALYTICS",
+      url: "https://testco.bamboohr.com/careers/42",
+    });
+  });
+
+  it("throws on a non-OK response", async () => {
+    server.use(
+      http.get("https://badco.bamboohr.com/careers/list", () => HttpResponse.json({}, { status: 500 }))
+    );
+    await expect(
+      bambooHrAdapter.fetchPostings({ company: "badco", organizationName: "Bad Co" })
+    ).rejects.toThrow(/BambooHR fetch failed/);
   });
 });
