@@ -1,0 +1,23 @@
+{
+  "name": "job-app-scrapers",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "run-discovery": "tsx src/runDiscovery.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "playwright": "^1.48.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.2",
+    "@types/node": "^22.7.4",
+    "prisma": "^5.22.0"
+  },
+  "allowScripts": {
+    "@prisma/client@5.22.0": true,
+    "esbuild@0.28.2": true,
+    "prisma@5.22.0": true
+  }
+}

@@ -1,0 +1,71 @@
+datasource db {
+  provider = "sqlite"
+  url      = "file:../../api/data/jobs.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// PostingCategory (string): BASEBALL_OPS | BASEBALL_ANALYTICS | BASEBALL_RND | DATA_SCIENCE | OTHER
+// ApplicationStage (string): FOUND | REVIEWING | APPLIED | INTERVIEW | OFFER | REJECTED | WITHDRAWN
+// SQLite has no native enum support in Prisma, so these are validated in the API layer (zod) instead.
+
+model Source {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  type      String   // "greenhouse" | "lever" | "teamwork_online" | "team_page" | "linkedin" | "indeed"
+  config    String?  // JSON string: selectors, board tokens, base URLs, etc.
+  createdAt DateTime @default(now())
+  postings  Posting[]
+}
+
+model Posting {
+  id            String   @id @default(cuid())
+  sourceId      String
+  source        Source   @relation(fields: [sourceId], references: [id])
+  externalId    String   // id/url fragment from the source, used for dedup
+  title         String
+  organization  String
+  location      String?
+  category      String   @default("OTHER")
+  url           String
+  description   String?
+  postedAt      DateTime?
+  discoveredAt  DateTime @default(now())
+  applications  Application[]
+
+  @@unique([sourceId, externalId])
+}
+
+model Application {
+  id          String            @id @default(cuid())
+  postingId   String
+  posting     Posting           @relation(fields: [postingId], references: [id])
+  stage       String            @default("FOUND")
+  resumeDocId String?
+  resumeDoc   Document?         @relation("ResumeDoc", fields: [resumeDocId], references: [id])
+  coverDocId  String?
+  coverDoc    Document?         @relation("CoverDoc", fields: [coverDocId], references: [id])
+  notes       String?
+  appliedAt   DateTime?
+  updatedAt   DateTime          @updatedAt
+  createdAt   DateTime          @default(now())
+}
+
+model Document {
+  id           String   @id @default(cuid())
+  kind         String   // "resume" | "cover_letter"
+  label        String
+  filePath     String
+  isBaseTemplate Boolean @default(false)
+  createdAt    DateTime @default(now())
+  resumeFor    Application[] @relation("ResumeDoc")
+  coverFor     Application[] @relation("CoverDoc")
+}
+
+model NotificationLog {
+  id        String   @id @default(cuid())
+  summary   String
+  createdAt DateTime @default(now())
+}

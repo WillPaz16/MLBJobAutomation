@@ -1,0 +1,20 @@
+node_modules/
+dist/
+build/
+.env
+.DS_Store
+job-app-system/api/data/*.db
+job-app-system/api/data/*.db-journal
+*.log
+job-app-system/scripts/daily-discovery.log
+
+# Personal documents — not meant to be published to the repo
+Academic Transcript.pdf
+Diploma_BA.pdf
+Diploma_BS.pdf
+Transcript_WilliamPaz.pdf
+Headshots/
+Resumes/
+Cover Letters/
+Questionnaires/
+~$*
