@@ -96,6 +96,12 @@ export const bambooHrSources: { company: string; organizationName: string }[] = 
   { company: "torontobluejays", organizationName: "Toronto Blue Jays" },
 ];
 
+// aaimtrack.com — find subdomain + domainId from the org's careers URL and its own XHR calls to
+// /core/jobs/<domainId> (no public docs for this API; domainId is only visible via network tab).
+export const aaimtrackSources: { subdomain: string; domainId: string; organizationName: string }[] = [
+  { subdomain: "stlcardinals", domainId: "1932", organizationName: "St. Louis Cardinals" },
+];
+
 // Team career pages not on Greenhouse/Lever/Workday/ADP/UKG/BambooHR. Validate selectors against
 // the live page before adding an entry here — see teamPage.ts adapter docs for the config contract.
 export const teamPageSources: {
@@ -118,31 +124,44 @@ export const teamPageSources: {
     linkSelector: ".col-xs-12.title a",
     locationSelector: ".header.left span:not(.sr-only)",
   },
+  {
+    organizationName: "San Diego Padres",
+    listUrl: "https://careers.hireology.com/sandiegopadres",
+    cardSelector: ".careers-job-list__table-row",
+    titleSelector: ".careers-job-list__table-row-link a",
+    linkSelector: ".careers-job-list__table-row-link a",
+    locationSelector: ".careers-job-list__table-row-text",
+  },
+  {
+    organizationName: "Minnesota Twins",
+    listUrl: "https://recruitingbypaycor.com/career/CareerHome.action?clientId=8a7883d08b729b3e018b72dc67f6007f",
+    cardSelector: ".gnewtonCareerGroupRowClass",
+    titleSelector: ".gnewtonCareerGroupJobTitleClass a",
+    linkSelector: ".gnewtonCareerGroupJobTitleClass a",
+    locationSelector: ".gnewtonCareerGroupJobDescriptionClass",
+  },
 ];
 
-// Confirmed NOT to have a scrapable public JSON API — re-verified live (not carried over from
-// stale research), each tagged with its real platform so a future session doesn't waste time
-// re-checking these or reaching for a workaround. 8 of 30 MLB teams land here; the honest way
-// to cover them in the tracker is the manual "add posting by URL" flow (POST /api/postings/manual),
-// not more scraping attempts:
+// Confirmed NOT to have a scrapable source — re-verified live (not carried over from stale
+// research). Only 4 of 30 MLB teams land here now:
 //   Teamwork Online / Indeed only (no public API, confirmed by direct apply-flow check): Marlins, Reds
-//   Milwaukee Brewers — iCIMS, server-rendered HTML nested in iframes (careers-brewers.icims.com).
-//     No JSON API found; a genuine candidate for the teamPageAdapter (Playwright) if ever built out —
-//     not a bot-detection wall, just needs real browser rendering + iframe traversal.
 //   Kansas City Royals / Arizona Diamondbacks — Dayforce HCM (jobs.dayforcehcm.com). Has a real
-//     JSON API (POST /api/geo/<tenant>/jobposting/search, confirmed via browser network capture)
-//     but returns 403 on every request-body shape tried without full devtools payload capture —
-//     needs a session with real devtools access to capture the exact required request shape
-//     (likely a required header or exact field set) before it's worth an adapter.
-//   Minnesota Twins — Paycor (recruitingbypaycor.com/recruitingbypaycor's API returned 401
-//     Unauthorized, requires a JWT — not a public API).
-//   St. Louis Cardinals — aaimtrack.com (Vue SPA, client-rendered; no JSON API found at the
-//     obvious endpoint — would need browser network capture like Dayforce to find the real one).
-//   San Diego Padres — Hireology (careers.hireology.com/sandiegopadres; guessed API endpoint
-//     404'd — same treatment as Cardinals/aaimtrack would be needed).
+//     JSON API (POST /api/geo/<tenant>/jobposting/search, confirmed via browser network capture),
+//     but every request — even one replayed from inside the live page's own JS console with
+//     matching cookies/origin — gets a 403 "Forbidden", while only genuine page-navigation-
+//     triggered requests succeed. That pattern (works for real navigation, fails for any scripted
+//     replay even from the same session) reads as active anti-automation fingerprinting, not a
+//     missing field — treated the same as Teamwork Online's bot detection and not pursued further.
 //
-// Yankees/Rays (ADP), Dodgers/Pirates/Rockies/Astros/Angels/Nationals/White Sox (UKG), and
-// Toronto Blue Jays (BambooHR) were previously miscategorized as dead ends — corrected once Will
-// found real career-center links and we found their actual public APIs. Keep re-checking any
-// remaining "Teamwork Online only" team the same way (find the org's actual outbound "Apply"
-// redirect rather than trusting an mlb.com page that never links off-platform).
+// The honest way to close the Marlins/Reds/Royals/Diamondbacks gap is the manual flow
+// (`POST /api/postings/manual`, "Add posting manually" on Discovery), not more scraping attempts.
+//
+// Yankees/Rays (ADP), Dodgers/Pirates/Rockies/Astros/Angels/Nationals/White Sox (UKG), Toronto
+// Blue Jays (BambooHR), and Brewers/Padres/Twins (teamPageAdapter, Playwright DOM scrape — none
+// of these three had a JSON API, but none had active bot detection either) were all previously
+// miscategorized as dead ends. Cardinals (aaimtrack.com) turned out to have a genuine, undocumented
+// but plain public JSON API — no auth needed, just an unusual `?getParams=<url-encoded JSON>`
+// query shape found via browser network capture. Keep re-checking any remaining "Teamwork Online
+// only" team the same way (find the org's actual outbound "Apply" redirect rather than trusting
+// an mlb.com page that never links off-platform), and remember: no JSON API ≠ dead end — only
+// active bot detection is.

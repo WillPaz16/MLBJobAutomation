@@ -57,23 +57,28 @@ React UI, all running on this machine — nothing is deployed anywhere.
   was confirmed with a live request against its actual API before being added (see the
   `add-job-source` skill). A trailing comment in that file lists teams confirmed to have no
   scrapable public API, so future sessions don't re-research the same dead ends.
-- **MLB coverage is 23/30 teams via scraping, eight platforms deep** — Greenhouse, Lever, Workday,
+- **MLB coverage is 26/30 teams via scraping, nine platforms deep** — Greenhouse, Lever, Workday,
   ADP (Workforce Now), UKG Pro Recruiting (aka UltiPro; hosts vary — `recruiting.ultipro.com`,
   `recruiting2.ultipro.com`, `<org>.rec.pro.ukg.net` are all the same platform/API shape),
-  BambooHR, and the generic `teamPageAdapter` (Playwright DOM scraping — see below). The
-  remaining 7 teams sit behind Teamwork Online/Indeed, a closed ATS with no public API (Paycor,
-  requires a JWT), a client-rendered SPA with no discovered API yet (aaimtrack/Cardinals,
-  Hireology/Padres — same treatment as Dayforce below would find it), or Dayforce HCM (Royals,
-  Diamondbacks — has a real JSON API, `POST /api/geo/<tenant>/jobposting/search`, confirmed via
-  browser network capture, but returns 403 on every request-body shape tried; needs a session
-  with real devtools to capture the exact required payload/headers). See the dead-end comment in
-  `sources.config.ts` for the full detail per team. **Don't trust an mlb.com team page alone to
-  say a team is Teamwork-Online-only** — ten teams (Yankees, Dodgers, Pirates, Rockies, Astros,
-  Angels, Nationals, White Sox, Rays via ADP/UKG, Blue Jays via BambooHR, Brewers via
-  `teamPageAdapter`) were previously miscategorized as dead ends because the research only
-  checked the mlb.com career page instead of following the actual "Apply Now" redirect, which
-  goes to the team's real ATS. When re-checking a "dead end," click through to the real apply
-  flow, not just the landing page. The honest way to close the remaining gap is the manual flow
+  BambooHR, aaimtrack.com, and the generic `teamPageAdapter` (Playwright DOM scraping — now
+  covers Brewers/iCIMS, Padres/Hireology, and Twins/Paycor, none of which had a JSON API but none
+  had bot protection either). The remaining 4 teams: Marlins/Reds are genuinely Teamwork
+  Online/Indeed only, and Royals/Diamondbacks (Dayforce HCM) have a real JSON API
+  (`POST /api/geo/<tenant>/jobposting/search`) that returns 403 on every scripted request —
+  including one replayed from inside the live page's own JS console with matching cookies —
+  while only genuine page-navigation-triggered requests succeed. That specific pattern (works for
+  real navigation, fails for any programmatic replay even from the same session) is active
+  anti-automation fingerprinting, not a missing field, and is treated the same as Teamwork
+  Online's bot detection — not pursued further. See the dead-end comment in `sources.config.ts`
+  for the full detail per team. **No JSON API ≠ dead end — only active bot detection is.** Twelve
+  teams (Yankees, Dodgers, Pirates, Rockies, Astros, Angels, Nationals, White Sox, Rays via
+  ADP/UKG, Blue Jays via BambooHR, Brewers/Padres/Twins via `teamPageAdapter`) were previously
+  miscategorized as dead ends because the research only checked the mlb.com career page instead
+  of following the actual "Apply Now" redirect, which goes to the team's real career site — from
+  there, either find the JSON API (browser network capture, not curl-guessing — client-rendered
+  apps like aaimtrack's Vue SPA don't reveal their API to curl at all) or, if there's no API but
+  also no bot protection, just render + DOM-scrape it with `teamPageAdapter`. The honest way to
+  close what's actually left is the manual flow
   (`POST /api/postings/manual`, "Add posting manually" on Discovery), not more scraping attempts —
   it creates a `Source` row of `type: "manual"` per organization (`manual:<org>`) so manual entries
   still group/attribute like scraped ones, and dedupes on a sha256 hash of the URL via the same

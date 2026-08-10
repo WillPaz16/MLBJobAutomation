@@ -7,6 +7,7 @@ import { workdayAdapter } from "../src/adapters/workday.js";
 import { adpAdapter } from "../src/adapters/adp.js";
 import { ukgAdapter } from "../src/adapters/ukg.js";
 import { bambooHrAdapter } from "../src/adapters/bamboohr.js";
+import { aaimtrackAdapter } from "../src/adapters/aaimtrack.js";
 
 describe("greenhouseAdapter", () => {
   it("maps jobs to NormalizedPosting", async () => {
@@ -291,5 +292,67 @@ describe("bambooHrAdapter", () => {
     await expect(
       bambooHrAdapter.fetchPostings({ company: "badco", organizationName: "Bad Co" })
     ).rejects.toThrow(/BambooHR fetch failed/);
+  });
+});
+
+describe("aaimtrackAdapter", () => {
+  it("maps jobs to NormalizedPosting", async () => {
+    server.use(
+      http.get("https://testco.aaimtrack.com/core/jobs/1234", () =>
+        HttpResponse.json({
+          success: true,
+          data: {
+            jobs: [
+              {
+                id: 999,
+                title: " Baseball Analytics Fellow ",
+                city: "St. Louis",
+                stateName: "Missouri",
+                jobUrl: "https://testco.aaimtrack.com/jobs/999",
+              },
+            ],
+          },
+        })
+      )
+    );
+
+    const postings = await aaimtrackAdapter.fetchPostings({
+      subdomain: "testco",
+      domainId: "1234",
+      organizationName: "Test Team",
+    });
+
+    expect(postings).toHaveLength(1);
+    expect(postings[0]).toMatchObject({
+      externalId: "999",
+      title: "Baseball Analytics Fellow",
+      organization: "Test Team",
+      location: "St. Louis, Missouri",
+      category: "BASEBALL_ANALYTICS",
+      url: "https://testco.aaimtrack.com/jobs/999",
+    });
+  });
+
+  it("returns an empty array when there are no jobs", async () => {
+    server.use(
+      http.get("https://empty.aaimtrack.com/core/jobs/1", () =>
+        HttpResponse.json({ success: true, data: { jobs: [] } })
+      )
+    );
+    const postings = await aaimtrackAdapter.fetchPostings({
+      subdomain: "empty",
+      domainId: "1",
+      organizationName: "Empty Co",
+    });
+    expect(postings).toEqual([]);
+  });
+
+  it("throws on a non-OK response", async () => {
+    server.use(
+      http.get("https://bad.aaimtrack.com/core/jobs/1", () => HttpResponse.json({}, { status: 500 }))
+    );
+    await expect(
+      aaimtrackAdapter.fetchPostings({ subdomain: "bad", domainId: "1", organizationName: "Bad Co" })
+    ).rejects.toThrow(/aaimtrack fetch failed/);
   });
 });

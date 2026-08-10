@@ -43,7 +43,9 @@ export const teamPageAdapter: Adapter = {
       await page.goto(listUrl, { waitUntil: "networkidle", timeout: 30000 });
 
       const target: Page | Frame = frameUrlContains ? await findFrame(page, frameUrlContains) : page;
-      await target.waitForSelector(cardSelector, { timeout: 15000 });
+      // A legitimately empty listing (zero current postings) means cardSelector never appears —
+      // that's not a failure, so don't let the timeout here bubble up as an error.
+      await target.waitForSelector(cardSelector, { timeout: 15000 }).catch(() => {});
 
       const cards = await target.$$(cardSelector);
       const postings: NormalizedPosting[] = [];

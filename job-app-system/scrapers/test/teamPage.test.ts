@@ -24,10 +24,15 @@ const INNER_HTML = `<!DOCTYPE html><html><body>
   </div>
 </body></html>`;
 
+const EMPTY_HTML = `<!DOCTYPE html><html><body>
+  <p>We do not currently have any open jobs. Please check back later.</p>
+</body></html>`;
+
 beforeAll(async () => {
   server = createServer((req, res) => {
     res.setHeader("Content-Type", "text/html");
     if (req.url?.startsWith("/inner")) res.end(INNER_HTML);
+    else if (req.url?.startsWith("/empty")) res.end(EMPTY_HTML);
     else res.end(OUTER_HTML);
   });
   await new Promise<void>((resolve) => server.listen(0, resolve));
@@ -60,6 +65,17 @@ describe("teamPageAdapter", () => {
       url: `${baseUrl}/jobs/1/retail-associate`,
     });
   });
+
+  it("returns an empty array rather than throwing when there are genuinely no postings", async () => {
+    const postings = await teamPageAdapter.fetchPostings({
+      organizationName: "Test Team",
+      listUrl: `${baseUrl}/empty`,
+      cardSelector: ".row.job",
+      titleSelector: "a.title",
+      linkSelector: "a.title",
+    });
+    expect(postings).toEqual([]);
+  }, 20000);
 
   it("throws if the expected frame never appears", async () => {
     await expect(
