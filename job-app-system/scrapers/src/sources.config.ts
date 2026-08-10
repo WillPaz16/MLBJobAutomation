@@ -105,7 +105,20 @@ export const teamPageSources: {
   titleSelector: string;
   linkSelector: string;
   locationSelector?: string;
-}[] = [];
+  frameUrlContains?: string;
+}[] = [
+  {
+    organizationName: "Milwaukee Brewers",
+    listUrl: "https://careers-brewers.icims.com/jobs/search?ss=1&searchRelation=keyword_all",
+    // iCIMS renders the actual listing in a same-origin iframe that won't load standalone —
+    // it depends on being embedded in this parent page. See teamPage.ts's frameUrlContains docs.
+    frameUrlContains: "in_iframe=1",
+    cardSelector: ".row:has(.col-xs-12.title)",
+    titleSelector: ".col-xs-12.title a h3",
+    linkSelector: ".col-xs-12.title a",
+    locationSelector: ".header.left span:not(.sr-only)",
+  },
+];
 
 // Confirmed NOT to have a scrapable public JSON API — re-verified live (not carried over from
 // stale research), each tagged with its real platform so a future session doesn't waste time

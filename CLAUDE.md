@@ -57,24 +57,23 @@ React UI, all running on this machine — nothing is deployed anywhere.
   was confirmed with a live request against its actual API before being added (see the
   `add-job-source` skill). A trailing comment in that file lists teams confirmed to have no
   scrapable public API, so future sessions don't re-research the same dead ends.
-- **MLB coverage is 22/30 teams via scraping, seven platforms deep** — Greenhouse, Lever, Workday,
+- **MLB coverage is 23/30 teams via scraping, eight platforms deep** — Greenhouse, Lever, Workday,
   ADP (Workforce Now), UKG Pro Recruiting (aka UltiPro; hosts vary — `recruiting.ultipro.com`,
-  `recruiting2.ultipro.com`, `<org>.rec.pro.ukg.net` are all the same platform/API shape), and
-  BambooHR. The remaining 8 teams sit behind Teamwork Online/Indeed, a closed ATS with no public
-  API (Paycor, requires a JWT), a client-rendered SPA with no discovered API yet (aaimtrack/
-  Cardinals, Hireology/Padres — same treatment as Dayforce below would find it), or Dayforce HCM
-  (Royals, Diamondbacks — has a real JSON API, `POST /api/geo/<tenant>/jobposting/search`,
-  confirmed via browser network capture, but returns 403 on every request-body shape tried; needs
-  a session with real devtools to capture the exact required payload/headers), or iCIMS (Brewers —
-  server-rendered HTML nested in iframes, no JSON API, but not bot-protected either — a genuine
-  candidate for the currently-unused `teamPageAdapter` Playwright scraper if it's ever built out).
-  See the dead-end comment in `sources.config.ts` for the full detail per team. **Don't trust an
-  mlb.com team page alone to say a team is Teamwork-Online-only** — nine teams (Yankees, Dodgers,
-  Pirates, Rockies, Astros, Angels, Nationals, White Sox, Rays via ADP/UKG, plus Blue Jays via
-  BambooHR) were previously miscategorized as dead ends because the research only checked the
-  mlb.com career page instead of following the actual "Apply Now" redirect, which goes to the
-  team's real ATS. When re-checking a "dead end," click through to the real apply flow, not just
-  the landing page. The honest way to close the remaining gap is the manual flow
+  `recruiting2.ultipro.com`, `<org>.rec.pro.ukg.net` are all the same platform/API shape),
+  BambooHR, and the generic `teamPageAdapter` (Playwright DOM scraping — see below). The
+  remaining 7 teams sit behind Teamwork Online/Indeed, a closed ATS with no public API (Paycor,
+  requires a JWT), a client-rendered SPA with no discovered API yet (aaimtrack/Cardinals,
+  Hireology/Padres — same treatment as Dayforce below would find it), or Dayforce HCM (Royals,
+  Diamondbacks — has a real JSON API, `POST /api/geo/<tenant>/jobposting/search`, confirmed via
+  browser network capture, but returns 403 on every request-body shape tried; needs a session
+  with real devtools to capture the exact required payload/headers). See the dead-end comment in
+  `sources.config.ts` for the full detail per team. **Don't trust an mlb.com team page alone to
+  say a team is Teamwork-Online-only** — ten teams (Yankees, Dodgers, Pirates, Rockies, Astros,
+  Angels, Nationals, White Sox, Rays via ADP/UKG, Blue Jays via BambooHR, Brewers via
+  `teamPageAdapter`) were previously miscategorized as dead ends because the research only
+  checked the mlb.com career page instead of following the actual "Apply Now" redirect, which
+  goes to the team's real ATS. When re-checking a "dead end," click through to the real apply
+  flow, not just the landing page. The honest way to close the remaining gap is the manual flow
   (`POST /api/postings/manual`, "Add posting manually" on Discovery), not more scraping attempts —
   it creates a `Source` row of `type: "manual"` per organization (`manual:<org>`) so manual entries
   still group/attribute like scraped ones, and dedupes on a sha256 hash of the URL via the same
@@ -85,6 +84,16 @@ React UI, all running on this machine — nothing is deployed anywhere.
   posting titled "Junior Product Designer" whose description said it was on the Dodgers'
   Baseball R&D team). This only affects newly-ingested postings — existing rows aren't
   retroactively recategorized when an adapter's description support improves.
+- **When a source has no JSON API but also no bot protection, render + DOM-scrape it — don't
+  reverse-engineer its internal API.** `teamPageAdapter.ts` (generic Playwright scraper) exists
+  for exactly this. It's the right tool whenever a site is JS-heavy/complex but doesn't actively
+  block headless requests (that distinction — heavy JS vs. active bot detection — is the whole
+  ballgame; only the latter is off-limits). Some platforms nest the actual listing in a
+  same-origin iframe that won't render if navigated to directly (it depends on being embedded in
+  the parent page) — `teamPageAdapter`'s optional `frameUrlContains` config searches
+  `page.frames()` for the right one instead. Milwaukee Brewers (iCIMS) is the first real usage of
+  this — DOM structure inspected live via Playwright rather than curl (curl only sees the
+  server-rendered shell, not client-rendered content).
 - **`Application.order`** is an integer position within its stage column, maintained by the UI
   (Pipeline.tsx) on every drag/stage-move — always re-sequence ALL affected applications in both
   the source and destination column (not just the moved one) so `order` values stay contiguous
