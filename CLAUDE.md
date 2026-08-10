@@ -8,7 +8,7 @@ React UI, all running on this machine — nothing is deployed anywhere.
 
 - `job-app-system/api/` — Express API + Prisma/SQLite (`api/data/jobs.db`). Also owns the daily
   scheduler (`api/src/scheduler.ts`) and db backups (`api/src/backup.ts`) — see "Scheduling" below.
-- `job-app-system/scrapers/` — source adapters (Greenhouse, Lever, Workday, generic team-page) + `runDiscovery.ts`.
+- `job-app-system/scrapers/` — source adapters (Greenhouse, Lever, Workday, ADP, UKG, generic team-page) + `runDiscovery.ts`.
 - `job-app-system/ui/` — React (Vite) app, proxies `/api` to :4000.
 - `job-app-system/package.json` — root-level only script is `npm run dev`, which boots api+ui
   together via `concurrently`. `scrapers/` is invoked by the scheduler, not part of this.
@@ -149,3 +149,18 @@ npm test                                                       # in api/, scrape
   makes it survive a reboot.
 - To trigger the scheduled job outside its normal 8am time (e.g. for testing), hit
   `POST /api/scheduler/run-now` — it runs the exact same function the cron trigger calls.
+
+## MCP tooling
+
+`.mcp.json` at the repo root configures two project-scoped MCP servers (Claude will prompt to
+approve them on first use in a session):
+- **Context7** — fetches current, version-specific docs for a library instead of relying on
+  training-data knowledge. Worth reaching for on this project specifically: at least two real
+  bugs this session came from stale assumptions about a library's API (shadcn's Base UI using
+  `render={}` instead of Radix's `asChild`, `onClick` instead of `onSelect` on menu items) —
+  checking current docs first would likely have caught both before they shipped.
+- **Serena** — semantic code navigation/editing via language-server symbol lookups instead of
+  grep. More useful as this codebase grows; modest payoff at its current size (a few dozen files
+  across three packages), but cheap to have available.
+- Serena requires `uv`/`uvx` (installed via `brew install uv` this session); Context7 needs only
+  `npx`, already available. Neither requires an API key for basic use.
