@@ -28,11 +28,16 @@ const EMPTY_HTML = `<!DOCTYPE html><html><body>
   <p>We do not currently have any open jobs. Please check back later.</p>
 </body></html>`;
 
+const DETAIL_HTML = `<!DOCTYPE html><html><body>
+  <div class="job-description">Sell Brewers gear at the team store.</div>
+</body></html>`;
+
 beforeAll(async () => {
   server = createServer((req, res) => {
     res.setHeader("Content-Type", "text/html");
     if (req.url?.startsWith("/inner")) res.end(INNER_HTML);
     else if (req.url?.startsWith("/empty")) res.end(EMPTY_HTML);
+    else if (req.url?.startsWith("/jobs/1/retail-associate")) res.end(DETAIL_HTML);
     else res.end(OUTER_HTML);
   });
   await new Promise<void>((resolve) => server.listen(0, resolve));
@@ -64,6 +69,37 @@ describe("teamPageAdapter", () => {
       location: "US-WI-Milwaukee",
       url: `${baseUrl}/jobs/1/retail-associate`,
     });
+  });
+
+  it("fetches description from the detail page when descriptionSelector is set", async () => {
+    const postings = await teamPageAdapter.fetchPostings({
+      organizationName: "Milwaukee Brewers",
+      listUrl: baseUrl,
+      frameUrlContains: "in_iframe=1",
+      cardSelector: ".row.job",
+      titleSelector: "a.title",
+      linkSelector: "a.title",
+      locationSelector: ".location",
+      descriptionSelector: ".job-description",
+    });
+
+    expect(postings).toHaveLength(2);
+    expect(postings[0].description).toBe("Sell Brewers gear at the team store.");
+    // Second posting's detail page 404s in this fixture — should still return a posting, just
+    // with no description, not throw and drop the whole batch.
+    expect(postings[1].description).toBeUndefined();
+  }, 20000);
+
+  it("does not fetch a description at all when descriptionSelector is omitted", async () => {
+    const postings = await teamPageAdapter.fetchPostings({
+      organizationName: "Milwaukee Brewers",
+      listUrl: baseUrl,
+      frameUrlContains: "in_iframe=1",
+      cardSelector: ".row.job",
+      titleSelector: "a.title",
+      linkSelector: "a.title",
+    });
+    expect(postings[0].description).toBeUndefined();
   });
 
   it("returns an empty array rather than throwing when there are genuinely no postings", async () => {

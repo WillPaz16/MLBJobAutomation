@@ -19,6 +19,21 @@ interface TeamPageConfig {
   // page. Set this to a substring of the iframe's URL to have the adapter search page.frames()
   // for it instead of querying the top-level document.
   frameUrlContains?: string;
+  // Optional: a selector on the detail page (the href from linkSelector) whose text content is
+  // the full job description. Requires an extra page navigation per posting, so only set this
+  // once verified live against the real detail page — don't guess at a shape. Omit entirely for
+  // sites where the detail page isn't reachable/verifiable (e.g. nested cross-origin iframes).
+  descriptionSelector?: string;
+}
+
+async function fetchDescription(browser: import("playwright").Browser, url: string, selector: string): Promise<string | undefined> {
+  const page = await browser.newPage();
+  try {
+    await page.goto(url, { waitUntil: "networkidle", timeout: 30000 });
+    return await page.$eval(selector, (el) => el.textContent?.trim() || undefined).catch(() => undefined);
+  } finally {
+    await page.close();
+  }
 }
 
 async function findFrame(page: Page, frameUrlContains: string, timeoutMs = 15000): Promise<Frame> {
@@ -35,8 +50,16 @@ export const teamPageAdapter: Adapter = {
   sourceName: "team_page",
   sourceType: "team_page",
   async fetchPostings(config: TeamPageConfig): Promise<NormalizedPosting[]> {
-    const { organizationName, listUrl, cardSelector, titleSelector, linkSelector, locationSelector, frameUrlContains } =
-      config;
+    const {
+      organizationName,
+      listUrl,
+      cardSelector,
+      titleSelector,
+      linkSelector,
+      locationSelector,
+      frameUrlContains,
+      descriptionSelector,
+    } = config;
     const browser = await chromium.launch();
     try {
       const page = await browser.newPage();
@@ -61,13 +84,18 @@ export const teamPageAdapter: Adapter = {
 
         if (!title || !href) continue;
 
+        const description = descriptionSelector
+          ? await fetchDescription(browser, href, descriptionSelector)
+          : undefined;
+
         postings.push({
           externalId: href,
           title,
           organization: organizationName,
           location,
-          category: categorize(title, organizationName),
+          category: categorize(title, organizationName, description),
           url: href,
+          description,
         });
       }
 

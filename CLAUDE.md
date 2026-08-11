@@ -229,9 +229,21 @@ React UI, all running on this machine — nothing is deployed anywhere.
   field (`postingInstructions`, `additionalProperties`, `links`) live against a real org; none of
   it carries description text. `aaimtrack.ts` wasn't verifiable this round because the one
   configured org (Cardinals) had zero live postings to test a detail endpoint against — revisit
-  when it has openings, don't guess at a shape. `teamPageAdapter`'s three configs (Brewers/Padres/
-  Twins) would need per-team selector work for detail-page descriptions — flagged as a real
-  follow-up, not done yet.
+  when it has openings, don't guess at a shape.
+- **`teamPageAdapter` supports an optional `descriptionSelector`** — when set, it navigates to
+  each posting's own detail page (the `href` from `linkSelector`) and pulls `textContent` from
+  that selector, same per-posting-detail-fetch pattern as `workday.ts`/`bamboohr.ts`. Only add it
+  after finding and confirming the real selector live (`page.$eval` against an actual detail page)
+  — never guess a class name from memory or docs. **San Diego Padres**: confirmed
+  `.careers-description__container` on Hireology's detail page
+  (`careers.hireology.com/sandiegopadres/<id>/description`), live-verified (6.5KB of real
+  description text). **Minnesota Twins**: still omitted — the page has had zero live postings
+  every time it's been checked, so there's no real detail page to verify a selector against yet.
+  **Milwaukee Brewers**: still omitted — a first pass found the detail page's top-level document
+  only has site-chrome text (nav/footer), and `page.frames()` lists several cross-origin ad/
+  tracking iframes but nothing obviously content-bearing; genuinely unresolved (not confirmed
+  impossible), just not worth more time on one team's description text right now. See the comment
+  block in `sources.config.ts` for the exact detail per team.
 - **Color theme is MLB-inspired (navy + red + white), not grayscale** — all in
   `ui/src/index.css`'s `:root`/`.dark`/`@theme inline` blocks (Tailwind v4 CSS-first, no JS config
   file exists). Both light and dark variants were updated together, per the existing dark-mode

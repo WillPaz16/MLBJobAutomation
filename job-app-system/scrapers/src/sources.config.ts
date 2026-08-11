@@ -133,6 +133,7 @@ export const teamPageSources: {
   linkSelector: string;
   locationSelector?: string;
   frameUrlContains?: string;
+  descriptionSelector?: string;
 }[] = [
   {
     organizationName: "Milwaukee Brewers",
@@ -152,6 +153,8 @@ export const teamPageSources: {
     titleSelector: ".careers-job-list__table-row-link a",
     linkSelector: ".careers-job-list__table-row-link a",
     locationSelector: ".careers-job-list__table-row-text",
+    // Confirmed live against a real posting's detail page.
+    descriptionSelector: ".careers-description__container",
   },
   {
     organizationName: "Minnesota Twins",
@@ -160,8 +163,21 @@ export const teamPageSources: {
     titleSelector: ".gnewtonCareerGroupJobTitleClass a",
     linkSelector: ".gnewtonCareerGroupJobTitleClass a",
     locationSelector: ".gnewtonCareerGroupJobDescriptionClass",
+    // No descriptionSelector: the Twins page has had zero live postings every time this was
+    // checked, so there's no real detail page to verify a selector against — add one only after
+    // confirming live, per convention, not by guessing at Paycor's markup from docs/memory.
   },
 ];
+
+// Brewers (iCIMS): descriptionSelector intentionally omitted, not because it's confirmed
+// impossible but because it wasn't found on a first pass and isn't worth more time for one team's
+// description text right now. What was actually checked: the detail page's top-level document
+// body only contains site-chrome text (nav links, footer) — the description isn't there via a few
+// plausible selector guesses (`[class*=description]`, `.iCIMS_JobContent`, etc.). `page.frames()`
+// on that URL lists several cross-origin ad/tracking iframes but nothing obviously
+// content-bearing. This could mean the real content is in a frame not yet identified, or requires
+// a different extraction approach — genuinely unresolved, not a dead end. Revisit with more time,
+// and verify live again rather than trusting this note if iCIMS' markup may have changed since.
 
 // All 30 MLB teams now have a scrapable source — no dead ends remain. Kept as a record of the
 // investigation, since the same techniques apply to any future "this site is blocked" claim.
