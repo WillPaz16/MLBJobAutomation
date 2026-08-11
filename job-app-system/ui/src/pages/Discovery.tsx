@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CircleAlert, ExternalLink } from "lucide-react";
+import { AlertTriangle, CircleAlert, ExternalLink, X } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../api/client";
 import type { Posting, PostingCategory } from "../api/types";
@@ -28,21 +28,6 @@ const CATEGORIES: { value: PostingCategory | "all"; label: string }[] = [
   { value: "BASEBALL_RND", label: "Baseball R&D" },
   { value: "DATA_SCIENCE", label: "Data Science" },
   { value: "OTHER", label: "Other" },
-];
-
-const SOURCES: { value: string; label: string }[] = [
-  { value: "all", label: "All sources" },
-  { value: "greenhouse", label: "Greenhouse" },
-  { value: "lever", label: "Lever" },
-  { value: "workday", label: "Workday" },
-  { value: "adp", label: "ADP" },
-  { value: "ukg", label: "UKG" },
-  { value: "bamboohr", label: "BambooHR" },
-  { value: "aaimtrack", label: "aaimtrack" },
-  { value: "teamworkonline", label: "TeamWork Online" },
-  { value: "dayforce", label: "Dayforce" },
-  { value: "team_page", label: "Team page (generic)" },
-  { value: "manual", label: "Manual" },
 ];
 
 const STATUSES: { value: "active" | "closed" | "all"; label: string }[] = [
@@ -101,12 +86,14 @@ export function Discovery() {
   const [category, setCategory] = useState("all");
   const [location, setLocation] = useState("");
   const [search, setSearch] = useState("");
-  const [source, setSource] = useState("all");
+  const [organization, setOrganization] = useState("all");
+  const [organizations, setOrganizations] = useState<string[]>([]);
   const [status, setStatus] = useState<"active" | "closed" | "all">("active");
   const [sort, setSort] = useState<"discoveredAt_desc" | "discoveredAt_asc" | "postedAt_desc" | "postedAt_asc">(
     "discoveredAt_desc"
   );
   const [hideDuplicates, setHideDuplicates] = useState(true);
+  const [showDismissed, setShowDismissed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [approvingIds, setApprovingIds] = useState<Set<string>>(new Set());
@@ -134,10 +121,11 @@ export function Discovery() {
         category: category === "all" ? undefined : category,
         location: debouncedLocation || undefined,
         q: debouncedSearch || undefined,
-        source: source === "all" ? undefined : source,
+        organization: organization === "all" ? undefined : organization,
         status,
         sort,
         hideDuplicates,
+        showDismissed,
       });
       setPostings(data);
     } catch (err) {
@@ -150,7 +138,16 @@ export function Discovery() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [category, debouncedLocation, debouncedSearch, source, status, sort, hideDuplicates]);
+  }, [category, debouncedLocation, debouncedSearch, organization, status, sort, hideDuplicates, showDismissed]);
+
+  useEffect(() => {
+    api.postings
+      .organizations()
+      .then(setOrganizations)
+      .catch(() => {
+        // silently skip — the organization filter just stays empty if this fails
+      });
+  }, []);
 
   const unreviewed = useMemo(() => postings.filter((p) => p.applications.length === 0), [postings]);
 
@@ -218,6 +215,28 @@ export function Discovery() {
     }
   }
 
+  async function dismiss(id: string) {
+    try {
+      await api.postings.update(id, { dismissedAt: new Date().toISOString() });
+      toast.success("Dismissed", {
+        action: { label: "Undo", onClick: () => undismiss(id) },
+      });
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to dismiss posting");
+    }
+  }
+
+  async function undismiss(id: string) {
+    try {
+      await api.postings.update(id, { dismissedAt: null });
+      toast.success("Restored");
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to restore posting");
+    }
+  }
+
   async function rejectDuplicate(id: string) {
     try {
       const updated = await api.postings.update(id, { duplicateRejected: true });
@@ -276,15 +295,16 @@ export function Discovery() {
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-muted-foreground">Source</label>
-          <Select value={source} onValueChange={(v) => setSource(v ?? "all")}>
-            <SelectTrigger className="w-44">
+          <label className="mb-1 block text-xs font-medium text-muted-foreground">Team / Company</label>
+          <Select value={organization} onValueChange={(v) => setOrganization(v ?? "all")}>
+            <SelectTrigger className="w-52">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {SOURCES.map((s) => (
-                <SelectItem key={s.value} value={s.value}>
-                  {s.label}
+              <SelectItem value="all">All teams / companies</SelectItem>
+              {organizations.map((org) => (
+                <SelectItem key={org} value={org}>
+                  {org}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -328,6 +348,16 @@ export function Discovery() {
           />
           <label htmlFor="hide-duplicates" className="text-xs font-medium text-muted-foreground">
             Hide flagged duplicates
+          </label>
+        </div>
+        <div className="flex items-center gap-1.5 pb-2">
+          <Checkbox
+            id="show-dismissed"
+            checked={showDismissed}
+            onCheckedChange={(checked) => setShowDismissed(checked === true)}
+          />
+          <label htmlFor="show-dismissed" className="text-xs font-medium text-muted-foreground">
+            Show dismissed
           </label>
         </div>
         <span className="ml-auto text-sm text-muted-foreground">
@@ -462,6 +492,7 @@ export function Discovery() {
                   </div>
                   <div className="mt-1 flex flex-wrap items-center gap-1.5">
                     <Badge variant="secondary">{p.category.replace(/_/g, " ")}</Badge>
+                    {p.dismissedAt && <Badge variant="outline">Dismissed</Badge>}
                     {p.closedAt && (
                       <Badge variant="outline" className="gap-1 border-amber-500/40 text-amber-700 dark:text-amber-400">
                         <AlertTriangle className="h-3 w-3" />
@@ -502,13 +533,32 @@ export function Discovery() {
                   <ExternalLink className="h-3.5 w-3.5" />
                 </a>
               </div>
-              {p.applications.length === 0 ? (
-                <Button onClick={() => approve(p.id)} disabled={approvingIds.has(p.id)}>
-                  {approvingIds.has(p.id) ? "Approving…" : "Approve to Apply"}
-                </Button>
-              ) : (
-                <Badge variant="outline">In pipeline</Badge>
-              )}
+              <div className="flex items-center gap-2">
+                {p.applications.length === 0 ? (
+                  <Button onClick={() => approve(p.id)} disabled={approvingIds.has(p.id)}>
+                    {approvingIds.has(p.id) ? "Approving…" : "Approve to Apply"}
+                  </Button>
+                ) : (
+                  <Badge variant="outline">In pipeline</Badge>
+                )}
+                {p.dismissedAt ? (
+                  <Button variant="ghost" size="sm" onClick={() => undismiss(p.id)}>
+                    Restore
+                  </Button>
+                ) : (
+                  p.applications.length === 0 && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => dismiss(p.id)}
+                      aria-label={`Dismiss ${p.title}`}
+                      title="Not interested — dismiss"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )
+                )}
+              </div>
             </div>
           ))}
         </div>

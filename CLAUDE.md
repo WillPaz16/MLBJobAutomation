@@ -191,16 +191,47 @@ React UI, all running on this machine — nothing is deployed anywhere.
   the same `OR` key** — they silently clobber each other (later key wins in the object literal);
   use `AND: [...]` to combine independent `OR` blocks, which is what a real bug caught in review
   here and a regression test now guards against.
-- **Discovery filtering** now includes `source` (ATS platform type, e.g. `greenhouse`/`dayforce` —
-  not individual org, since org search is already covered by the existing `q` text search),
-  `status` (see above), and `sort` (`discoveredAt`/`postedAt`, asc/desc) — all server-side query
-  params on `GET /api/postings`, following the same debounced pattern as the pre-existing
-  `category`/`location`/`q` filters. `postedAt` is nullable and SQLite's default null-ordering
-  applies (no special NULLS LAST handling) — a known, accepted minor limitation, not a bug.
+- **Discovery filtering** includes `status` (see above), `sort` (`discoveredAt`/`postedAt`, asc/
+  desc), and `organization` (exact match) as server-side query params on `GET /api/postings`,
+  following the same debounced pattern as the pre-existing `category`/`location`/`q` filters. The
+  UI's "Team / Company" dropdown is populated from `GET /api/postings/organizations` (distinct,
+  sorted, excludes dismissed) rather than a hardcoded list. **Filtering by ATS platform (`source`)
+  was tried first and dropped from the UI** — it's still a valid API query param (`source={type}`,
+  matches `Source.type`), but it turned out to be the wrong grouping for how the app is actually
+  used: Will thinks in terms of which team/company a posting is for, not which ATS happens to host
+  it. `postedAt` is nullable and SQLite's default null-ordering applies (no special NULLS LAST
+  handling) — a known, accepted minor limitation, not a bug.
+- **"Not interested" dismissal is a separate concept from `closedAt`.** `Posting.dismissedAt` is
+  user-initiated (a dismiss button in Discovery, with an undo toast and a "Show dismissed" filter
+  toggle) and persists even if a later scrape still finds the posting live — it reflects a
+  judgment call about the *role*, not the listing's liveness, so it must never be conflated with or
+  overwritten by the scraper's active/inactive tracking. Excluded from `GET /api/postings` by
+  default (`showDismissed=true` to include).
 - **Kanban cards show more at a glance**: source platform badge, relative "Posted Nd ago" (falling
   back to "Found Nd ago" from `discoveredAt` if `postedAt` is null — no date library is installed,
-  it's a small local helper next to `docStatus()`), and a truncated notes preview. Deliberately
-  skipped: explicit stage text (redundant with the column header).
+  it's a small local helper next to `docStatus()`), and a truncated notes preview. Clicking a
+  card's title (or the notes preview) opens a detail dialog that now also shows the full job
+  description above the notes editor — previously the description was only visible on Discovery,
+  so reviewing it while working the pipeline meant leaving the page. Deliberately skipped: explicit
+  stage text (redundant with the column header).
+- **Recategorization of already-ingested postings is a deliberate one-off script, not automatic.**
+  `scrapers/src/scripts/recategorize.ts` re-runs the current `categorize()` logic against every
+  existing `Posting` row and updates only the ones whose category actually changed — safe to
+  re-run any time `categorize()`'s logic changes. New postings are always categorized correctly at
+  ingest time; this exists because rows ingested *before* a `categorize()` fix stay on their old
+  (possibly wrong) category forever otherwise, per the project's existing "no automatic
+  retroactive recategorization" convention. Run via `npx tsx src/scripts/recategorize.ts` in
+  `scrapers/`.
+- **Not every adapter can capture a description, and that's a verified fact, not a gap to
+  guess-fill.** `bamboohr.ts` now does (per-job detail endpoint,
+  `result.jobOpening.description`, confirmed live). `adp.ts` genuinely has no description anywhere
+  in its public API — checked the list endpoint, the per-item detail endpoint, and every nested
+  field (`postingInstructions`, `additionalProperties`, `links`) live against a real org; none of
+  it carries description text. `aaimtrack.ts` wasn't verifiable this round because the one
+  configured org (Cardinals) had zero live postings to test a detail endpoint against — revisit
+  when it has openings, don't guess at a shape. `teamPageAdapter`'s three configs (Brewers/Padres/
+  Twins) would need per-team selector work for detail-page descriptions — flagged as a real
+  follow-up, not done yet.
 - **Color theme is MLB-inspired (navy + red + white), not grayscale** — all in
   `ui/src/index.css`'s `:root`/`.dark`/`@theme inline` blocks (Tailwind v4 CSS-first, no JS config
   file exists). Both light and dark variants were updated together, per the existing dark-mode

@@ -123,6 +123,45 @@ describe("GET /api/postings", () => {
     expect(res.body).toHaveLength(1);
     expect(res.body[0].title).toBe("Baseball Analyst Original");
   });
+
+  it("filters by exact organization (team/company), not just substring search", async () => {
+    await createPosting({ organization: "Chicago Cubs", title: "Cubs role" });
+    await createPosting({ organization: "Chicago White Sox", title: "White Sox role" });
+
+    const res = await request(app).get(`/api/postings?organization=${encodeURIComponent("Chicago Cubs")}`);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].title).toBe("Cubs role");
+  });
+
+  it("excludes dismissed postings by default", async () => {
+    await createPosting({ title: "Kept" });
+    await createPosting({ title: "Dismissed", dismissedAt: new Date() });
+
+    const res = await request(app).get("/api/postings");
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].title).toBe("Kept");
+  });
+
+  it("showDismissed=true includes dismissed postings", async () => {
+    await createPosting({ title: "Kept" });
+    await createPosting({ title: "Dismissed", dismissedAt: new Date() });
+
+    const res = await request(app).get("/api/postings?showDismissed=true");
+    expect(res.body).toHaveLength(2);
+  });
+});
+
+describe("GET /api/postings/organizations", () => {
+  it("returns distinct, sorted, non-dismissed organizations", async () => {
+    await createPosting({ organization: "Chicago Cubs" });
+    await createPosting({ organization: "Chicago Cubs" });
+    await createPosting({ organization: "Boston Red Sox" });
+    await createPosting({ organization: "Only Dismissed Org", dismissedAt: new Date() });
+
+    const res = await request(app).get("/api/postings/organizations");
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual(["Boston Red Sox", "Chicago Cubs"]);
+  });
 });
 
 describe("GET /api/postings/:id", () => {
@@ -163,6 +202,28 @@ describe("PATCH /api/postings/:id", () => {
     expect(res.status).toBe(200);
     expect(res.body.duplicateRejected).toBe(true);
     expect(res.body.possibleDuplicateOfId).toBe(original.id);
+  });
+
+  it("dismisses a posting", async () => {
+    const posting = await createPosting();
+    const res = await request(app)
+      .patch(`/api/postings/${posting.id}`)
+      .send({ dismissedAt: new Date().toISOString() });
+    expect(res.status).toBe(200);
+    expect(res.body.dismissedAt).not.toBeNull();
+
+    const list = await request(app).get("/api/postings");
+    expect(list.body.find((p: { id: string }) => p.id === posting.id)).toBeUndefined();
+  });
+
+  it("un-dismisses a posting by setting dismissedAt back to null", async () => {
+    const posting = await createPosting({ dismissedAt: new Date() });
+    const res = await request(app).patch(`/api/postings/${posting.id}`).send({ dismissedAt: null });
+    expect(res.status).toBe(200);
+    expect(res.body.dismissedAt).toBeNull();
+
+    const list = await request(app).get("/api/postings");
+    expect(list.body.find((p: { id: string }) => p.id === posting.id)).toBeDefined();
   });
 });
 

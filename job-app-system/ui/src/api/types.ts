@@ -39,6 +39,7 @@ export interface Posting {
   possibleDuplicateOfId: string | null;
   possibleDuplicateOf?: Posting | null;
   duplicateRejected: boolean;
+  dismissedAt: string | null;
   applications: Application[];
 }
 

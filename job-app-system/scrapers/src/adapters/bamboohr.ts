@@ -14,6 +14,15 @@ interface BambooConfig {
   organizationName: string;
 }
 
+// The list endpoint above doesn't include a description — only the per-job detail endpoint does,
+// under result.jobOpening.description (confirmed via live curl against the Blue Jays' board).
+async function fetchJobDescription(company: string, jobId: string): Promise<string | undefined> {
+  const res = await fetch(`https://${company}.bamboohr.com/careers/${jobId}/detail`);
+  if (!res.ok) return undefined;
+  const data = (await res.json()) as { result?: { jobOpening?: { description?: string } } };
+  return data.result?.jobOpening?.description;
+}
+
 export const bambooHrAdapter: Adapter = {
   sourceName: "bamboohr",
   sourceType: "bamboohr",
@@ -25,16 +34,20 @@ export const bambooHrAdapter: Adapter = {
     }
     const data = (await res.json()) as { result: BambooJob[] };
 
-    return data.result.map((job) => {
+    const postings: NormalizedPosting[] = [];
+    for (const job of data.result) {
       const location = [job.location?.city, job.location?.state].filter(Boolean).join(", ");
-      return {
+      const description = await fetchJobDescription(company, job.id).catch(() => undefined);
+      postings.push({
         externalId: job.id,
         title: job.jobOpeningName,
         organization: organizationName,
         location: location || undefined,
-        category: categorize(job.jobOpeningName, organizationName),
+        category: categorize(job.jobOpeningName, organizationName, description),
         url: `https://${company}.bamboohr.com/careers/${job.id}`,
-      };
-    });
+        description,
+      });
+    }
+    return postings;
   },
 };

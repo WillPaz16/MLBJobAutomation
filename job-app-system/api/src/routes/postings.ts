@@ -16,7 +16,7 @@ const SORT_OPTIONS = {
 postingsRouter.get(
   "/",
   asyncHandler(async (req, res) => {
-    const { category, location, q, source, status, sort, hideDuplicates } = req.query;
+    const { category, location, q, source, organization, status, sort, hideDuplicates, showDismissed } = req.query;
     const { take, skip } = paginationSchema.parse(req.query);
 
     const statusFilter =
@@ -27,6 +27,8 @@ postingsRouter.get(
         category: category ? (category as string) : undefined,
         location: location ? { contains: location as string } : undefined,
         source: source ? { type: source as string } : undefined,
+        organization: organization ? (organization as string) : undefined,
+        dismissedAt: showDismissed === "true" ? undefined : null,
         ...statusFilter,
         AND: [
           q
@@ -47,6 +49,21 @@ postingsRouter.get(
   })
 );
 
+// Registered before "/:id" — Express matches path segments in declaration order, and "/:id" would
+// otherwise swallow "/organizations" as a literal id value.
+postingsRouter.get(
+  "/organizations",
+  asyncHandler(async (_req, res) => {
+    const rows = await prisma.posting.findMany({
+      where: { dismissedAt: null },
+      select: { organization: true },
+      distinct: ["organization"],
+      orderBy: { organization: "asc" },
+    });
+    res.json(rows.map((r) => r.organization));
+  })
+);
+
 postingsRouter.get(
   "/:id",
   asyncHandler(async (req, res) => {
@@ -62,9 +79,15 @@ postingsRouter.get(
 postingsRouter.patch(
   "/:id",
   asyncHandler(async (req, res) => {
-    const data = updatePostingSchema.parse(req.body);
+    const { dismissedAt, ...rest } = updatePostingSchema.parse(req.body);
     const posting = await prisma.posting
-      .update({ where: { id: req.params.id }, data })
+      .update({
+        where: { id: req.params.id },
+        data: {
+          ...rest,
+          dismissedAt: dismissedAt === undefined ? undefined : dismissedAt ? new Date(dismissedAt) : null,
+        },
+      })
       .catch(() => {
         throw new HttpError(404, "Posting not found");
       });

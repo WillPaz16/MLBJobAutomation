@@ -40,9 +40,11 @@ export const api = {
       location?: string;
       q?: string;
       source?: string;
+      organization?: string;
       status?: "active" | "closed" | "all";
       sort?: "discoveredAt_desc" | "discoveredAt_asc" | "postedAt_desc" | "postedAt_asc";
       hideDuplicates?: boolean;
+      showDismissed?: boolean;
       take?: number;
       skip?: number;
     }) => {
@@ -53,9 +55,10 @@ export const api = {
       const q = new URLSearchParams(entries.map(([k, v]) => [k, String(v)])).toString();
       return request<Posting[]>(`/postings${q ? `?${q}` : ""}`);
     },
+    organizations: () => request<string[]>("/postings/organizations"),
     approve: (id: string) => request<Application>(`/postings/${id}/approve`, { method: "POST" }),
     remove: (id: string) => request<void>(`/postings/${id}`, { method: "DELETE" }),
-    update: (id: string, data: Partial<{ duplicateRejected: boolean }>) =>
+    update: (id: string, data: Partial<{ duplicateRejected: boolean; dismissedAt: string | null }>) =>
       request<Posting>(`/postings/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
     createManual: (data: {
       title: string;

@@ -299,7 +299,7 @@ describe("ukgAdapter", () => {
 });
 
 describe("bambooHrAdapter", () => {
-  it("maps career listings to NormalizedPosting", async () => {
+  it("maps career listings to NormalizedPosting, including description from the detail endpoint", async () => {
     server.use(
       http.get("https://testco.bamboohr.com/careers/list", () =>
         HttpResponse.json({
@@ -312,6 +312,11 @@ describe("bambooHrAdapter", () => {
               location: { city: "Toronto", state: "Ontario" },
             },
           ],
+        })
+      ),
+      http.get("https://testco.bamboohr.com/careers/42/detail", () =>
+        HttpResponse.json({
+          result: { jobOpening: { description: "<p>Analyze player performance data.</p>" } },
         })
       )
     );
@@ -329,10 +334,28 @@ describe("bambooHrAdapter", () => {
       location: "Toronto, Ontario",
       category: "BASEBALL_ANALYTICS",
       url: "https://testco.bamboohr.com/careers/42",
+      description: "<p>Analyze player performance data.</p>",
     });
   });
 
-  it("throws on a non-OK response", async () => {
+  it("still returns a posting with no description if the detail fetch fails", async () => {
+    server.use(
+      http.get("https://detailfail.bamboohr.com/careers/list", () =>
+        HttpResponse.json({ result: [{ id: "1", jobOpeningName: "Usher" }] })
+      ),
+      http.get("https://detailfail.bamboohr.com/careers/1/detail", () => HttpResponse.json({}, { status: 500 }))
+    );
+
+    const postings = await bambooHrAdapter.fetchPostings({
+      company: "detailfail",
+      organizationName: "Test Team",
+    });
+
+    expect(postings).toHaveLength(1);
+    expect(postings[0].description).toBeUndefined();
+  });
+
+  it("throws on a non-OK response from the list endpoint", async () => {
     server.use(
       http.get("https://badco.bamboohr.com/careers/list", () => HttpResponse.json({}, { status: 500 }))
     );

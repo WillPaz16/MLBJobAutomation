@@ -49,6 +49,11 @@ model Posting {
   duplicateCandidates   Posting[] @relation("PostingDuplicate")
   duplicateRejected     Boolean   @default(false)
 
+  // User-initiated "not interested" — distinct from closedAt (which tracks whether the source
+  // still lists it). A dismissed posting stays dismissed even if a later scrape still finds it,
+  // since dismissal reflects the user's judgment about the role, not the listing's liveness.
+  dismissedAt           DateTime?
+
   @@unique([sourceId, externalId])
 }
 

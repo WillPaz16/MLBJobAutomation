@@ -170,9 +170,13 @@ function CardBody({
           <GripVertical className="size-4" />
         </button>
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-medium leading-tight text-foreground">
+          <button
+            onClick={onOpenDetail}
+            onPointerDown={(e) => e.stopPropagation()}
+            className="text-left text-sm font-medium leading-tight text-foreground hover:underline"
+          >
             {application.posting?.title}
-          </div>
+          </button>
           <div className="text-xs text-muted-foreground">{application.posting?.organization}</div>
         </div>
         <DropdownMenu>
@@ -626,8 +630,27 @@ export function Pipeline() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{detailApplication?.posting?.title}</DialogTitle>
-            <DialogDescription>{detailApplication?.posting?.organization}</DialogDescription>
+            <DialogDescription>
+              {detailApplication?.posting?.organization} ·{" "}
+              {detailApplication?.posting?.location ?? "location unknown"}
+            </DialogDescription>
           </DialogHeader>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Job description</label>
+            <div className="mt-1 max-h-64 overflow-y-auto whitespace-pre-wrap rounded-md border bg-muted/30 p-2 text-sm text-foreground">
+              {detailApplication?.posting?.description || "No description was captured for this posting."}
+            </div>
+            {detailApplication?.posting?.url && (
+              <a
+                href={detailApplication.posting.url}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-1 inline-block text-sm text-primary underline"
+              >
+                View original posting
+              </a>
+            )}
+          </div>
           <Textarea
             value={notesDraft}
             onChange={(e) => setNotesDraft(e.target.value)}

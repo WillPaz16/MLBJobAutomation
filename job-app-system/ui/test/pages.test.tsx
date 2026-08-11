@@ -8,7 +8,11 @@ import { Analytics } from "../src/pages/Analytics";
 
 vi.mock("../src/api/client", () => ({
   api: {
-    postings: { list: vi.fn().mockResolvedValue([]), approve: vi.fn() },
+    postings: {
+      list: vi.fn().mockResolvedValue([]),
+      approve: vi.fn(),
+      organizations: vi.fn().mockResolvedValue([]),
+    },
     applications: { list: vi.fn().mockResolvedValue([]), update: vi.fn() },
     documents: { list: vi.fn().mockResolvedValue([]), create: vi.fn(), remove: vi.fn() },
     analytics: {
