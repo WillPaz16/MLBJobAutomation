@@ -33,6 +33,12 @@ export interface Posting {
   description: string | null;
   postedAt: string | null;
   discoveredAt: string;
+  lastSeenAt: string;
+  closedAt: string | null;
+  missedRuns: number;
+  possibleDuplicateOfId: string | null;
+  possibleDuplicateOf?: Posting | null;
+  duplicateRejected: boolean;
   applications: Application[];
 }
 

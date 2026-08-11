@@ -31,9 +31,22 @@ async function runAdapter(adapter: Adapter, configs: Record<string, any>[]) {
   for (const config of configs) {
     try {
       const postings = await adapter.fetchPostings(config);
-      const { inserted, skipped } = await ingestPostings(source.id, postings);
+      const { inserted, skipped, closed, reopened, flaggedDuplicates } = await ingestPostings(
+        source.id,
+        postings,
+        config.organizationName
+      );
       totalInserted += inserted;
-      console.log(`[${adapter.sourceName}:${config.organizationName}] +${inserted} new, ${skipped} already known`);
+      const extra = [
+        closed > 0 ? `${closed} closed` : null,
+        reopened > 0 ? `${reopened} reopened` : null,
+        flaggedDuplicates > 0 ? `${flaggedDuplicates} flagged as possible duplicates` : null,
+      ]
+        .filter(Boolean)
+        .join(", ");
+      console.log(
+        `[${adapter.sourceName}:${config.organizationName}] +${inserted} new, ${skipped} already known${extra ? `, ${extra}` : ""}`
+      );
     } catch (err) {
       console.error(`[${adapter.sourceName}:${config.organizationName}] failed:`, (err as Error).message);
     }

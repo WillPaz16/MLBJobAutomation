@@ -35,16 +35,28 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
 export const api = {
   postings: {
-    list: (params?: { category?: string; location?: string; q?: string; take?: number; skip?: number }) => {
+    list: (params?: {
+      category?: string;
+      location?: string;
+      q?: string;
+      source?: string;
+      status?: "active" | "closed" | "all";
+      sort?: "discoveredAt_desc" | "discoveredAt_asc" | "postedAt_desc" | "postedAt_asc";
+      hideDuplicates?: boolean;
+      take?: number;
+      skip?: number;
+    }) => {
       const entries = Object.entries(params ?? {}).filter(([, v]) => v !== undefined && v !== "") as [
         string,
         string,
       ][];
-      const q = new URLSearchParams(entries).toString();
+      const q = new URLSearchParams(entries.map(([k, v]) => [k, String(v)])).toString();
       return request<Posting[]>(`/postings${q ? `?${q}` : ""}`);
     },
     approve: (id: string) => request<Application>(`/postings/${id}/approve`, { method: "POST" }),
     remove: (id: string) => request<void>(`/postings/${id}`, { method: "DELETE" }),
+    update: (id: string, data: Partial<{ duplicateRejected: boolean }>) =>
+      request<Posting>(`/postings/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
     createManual: (data: {
       title: string;
       organization: string;

@@ -35,6 +35,20 @@ model Posting {
   discoveredAt  DateTime @default(now())
   applications  Application[]
 
+  // Active/inactive tracking (scrapers/src/ingest.ts's closing pass, scoped per sourceId+organization
+  // since one Source row is shared across every org an adapter covers).
+  lastSeenAt    DateTime @default(now())
+  closedAt      DateTime?
+  missedRuns    Int      @default(0)
+
+  // Cross-source duplicate flagging (scrapers/src/dedupe.ts) — a fuzzy title match against an
+  // existing posting from the same org is inserted as its own row and linked here rather than
+  // silently skipped, so it's visible and reviewable instead of invisibly suppressed.
+  possibleDuplicateOfId String?
+  possibleDuplicateOf   Posting?  @relation("PostingDuplicate", fields: [possibleDuplicateOfId], references: [id], onDelete: SetNull)
+  duplicateCandidates   Posting[] @relation("PostingDuplicate")
+  duplicateRejected     Boolean   @default(false)
+
   @@unique([sourceId, externalId])
 }
 

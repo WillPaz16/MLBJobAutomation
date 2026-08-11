@@ -6,25 +6,40 @@ import { createManualPostingSchema, paginationSchema, updatePostingSchema } from
 
 export const postingsRouter = Router();
 
+const SORT_OPTIONS = {
+  discoveredAt_desc: { discoveredAt: "desc" as const },
+  discoveredAt_asc: { discoveredAt: "asc" as const },
+  postedAt_desc: { postedAt: "desc" as const },
+  postedAt_asc: { postedAt: "asc" as const },
+};
+
 postingsRouter.get(
   "/",
   asyncHandler(async (req, res) => {
-    const { category, location, q } = req.query;
+    const { category, location, q, source, status, sort, hideDuplicates } = req.query;
     const { take, skip } = paginationSchema.parse(req.query);
+
+    const statusFilter =
+      status === "closed" ? { closedAt: { not: null } } : status === "all" ? {} : { closedAt: null };
 
     const postings = await prisma.posting.findMany({
       where: {
         category: category ? (category as string) : undefined,
         location: location ? { contains: location as string } : undefined,
-        OR: q
-          ? [
-              { title: { contains: q as string } },
-              { organization: { contains: q as string } },
-            ]
-          : undefined,
+        source: source ? { type: source as string } : undefined,
+        ...statusFilter,
+        AND: [
+          q
+            ? { OR: [{ title: { contains: q as string } }, { organization: { contains: q as string } }] }
+            : {},
+          hideDuplicates === "true" ? { OR: [{ possibleDuplicateOfId: null }, { duplicateRejected: true }] } : {},
+        ],
       },
-      include: { source: true, applications: true },
-      orderBy: { discoveredAt: "desc" },
+      include: { source: true, applications: true, possibleDuplicateOf: true },
+      orderBy:
+        typeof sort === "string" && sort in SORT_OPTIONS
+          ? SORT_OPTIONS[sort as keyof typeof SORT_OPTIONS]
+          : SORT_OPTIONS.discoveredAt_desc,
       take,
       skip,
     });
@@ -37,7 +52,7 @@ postingsRouter.get(
   asyncHandler(async (req, res) => {
     const posting = await prisma.posting.findUnique({
       where: { id: req.params.id },
-      include: { source: true, applications: true },
+      include: { source: true, applications: true, possibleDuplicateOf: true },
     });
     if (!posting) throw new HttpError(404, "Posting not found");
     res.json(posting);

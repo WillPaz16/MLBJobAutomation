@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import request from "supertest";
 import { createApp } from "../src/index.js";
-import { createPosting } from "./helpers.js";
+import { createPosting, createSource } from "./helpers.js";
 
 const app = createApp();
 
@@ -50,6 +50,79 @@ describe("GET /api/postings", () => {
     const res = await request(app).get("/api/postings?take=99999");
     expect(res.status).toBe(400);
   });
+
+  it("filters by source platform type", async () => {
+    const greenhouseSource = await createSource("gh-test", "greenhouse");
+    const leverSource = await createSource("lever-test", "lever");
+    await createPosting({ sourceId: greenhouseSource.id, title: "Greenhouse role" });
+    await createPosting({ sourceId: leverSource.id, title: "Lever role" });
+
+    const res = await request(app).get("/api/postings?source=lever");
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].title).toBe("Lever role");
+  });
+
+  it("defaults to active-only (closedAt: null), excluding closed postings", async () => {
+    await createPosting({ title: "Open role" });
+    await createPosting({ title: "Closed role", closedAt: new Date() });
+
+    const res = await request(app).get("/api/postings");
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].title).toBe("Open role");
+  });
+
+  it("status=closed returns only closed postings", async () => {
+    await createPosting({ title: "Open role" });
+    await createPosting({ title: "Closed role", closedAt: new Date() });
+
+    const res = await request(app).get("/api/postings?status=closed");
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].title).toBe("Closed role");
+  });
+
+  it("status=all returns both open and closed postings", async () => {
+    await createPosting({ title: "Open role" });
+    await createPosting({ title: "Closed role", closedAt: new Date() });
+
+    const res = await request(app).get("/api/postings?status=all");
+    expect(res.body).toHaveLength(2);
+  });
+
+  it("sorts by postedAt ascending when requested", async () => {
+    await createPosting({ title: "Newer", postedAt: new Date("2026-02-01") });
+    await createPosting({ title: "Older", postedAt: new Date("2026-01-01") });
+
+    const res = await request(app).get("/api/postings?sort=postedAt_asc");
+    expect(res.body.map((p: { title: string }) => p.title)).toEqual(["Older", "Newer"]);
+  });
+
+  it("hideDuplicates=true excludes flagged-duplicate postings but keeps rejected ones", async () => {
+    const original = await createPosting({ title: "Original" });
+    await createPosting({ title: "Flagged duplicate", possibleDuplicateOfId: original.id });
+    await createPosting({
+      title: "Rejected as duplicate",
+      possibleDuplicateOfId: original.id,
+      duplicateRejected: true,
+    });
+
+    const res = await request(app).get("/api/postings?hideDuplicates=true");
+    const titles = res.body.map((p: { title: string }) => p.title).sort();
+    expect(titles).toEqual(["Original", "Rejected as duplicate"]);
+  });
+
+  it("combines a text search with hideDuplicates without one condition clobbering the other", async () => {
+    const original = await createPosting({ title: "Baseball Analyst Original", organization: "Cubs" });
+    await createPosting({
+      title: "Baseball Analyst Flagged",
+      organization: "Cubs",
+      possibleDuplicateOfId: original.id,
+    });
+    await createPosting({ title: "Unrelated Role", organization: "Cubs" });
+
+    const res = await request(app).get("/api/postings?q=Analyst&hideDuplicates=true");
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].title).toBe("Baseball Analyst Original");
+  });
 });
 
 describe("GET /api/postings/:id", () => {
@@ -80,6 +153,16 @@ describe("PATCH /api/postings/:id", () => {
   it("404s for a missing posting", async () => {
     const res = await request(app).patch("/api/postings/does-not-exist").send({ category: "OTHER" });
     expect(res.status).toBe(404);
+  });
+
+  it("rejects a flagged duplicate match, keeping the link but stopping the flag", async () => {
+    const original = await createPosting({ title: "Original" });
+    const flagged = await createPosting({ title: "Flagged", possibleDuplicateOfId: original.id });
+
+    const res = await request(app).patch(`/api/postings/${flagged.id}`).send({ duplicateRejected: true });
+    expect(res.status).toBe(200);
+    expect(res.body.duplicateRejected).toBe(true);
+    expect(res.body.possibleDuplicateOfId).toBe(original.id);
   });
 });
 

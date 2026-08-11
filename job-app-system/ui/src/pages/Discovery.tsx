@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ExternalLink } from "lucide-react";
+import { AlertTriangle, CircleAlert, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../api/client";
 import type { Posting, PostingCategory } from "../api/types";
@@ -10,6 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Dialog,
   DialogContent,
@@ -27,6 +28,34 @@ const CATEGORIES: { value: PostingCategory | "all"; label: string }[] = [
   { value: "BASEBALL_RND", label: "Baseball R&D" },
   { value: "DATA_SCIENCE", label: "Data Science" },
   { value: "OTHER", label: "Other" },
+];
+
+const SOURCES: { value: string; label: string }[] = [
+  { value: "all", label: "All sources" },
+  { value: "greenhouse", label: "Greenhouse" },
+  { value: "lever", label: "Lever" },
+  { value: "workday", label: "Workday" },
+  { value: "adp", label: "ADP" },
+  { value: "ukg", label: "UKG" },
+  { value: "bamboohr", label: "BambooHR" },
+  { value: "aaimtrack", label: "aaimtrack" },
+  { value: "teamworkonline", label: "TeamWork Online" },
+  { value: "dayforce", label: "Dayforce" },
+  { value: "team_page", label: "Team page (generic)" },
+  { value: "manual", label: "Manual" },
+];
+
+const STATUSES: { value: "active" | "closed" | "all"; label: string }[] = [
+  { value: "active", label: "Active only" },
+  { value: "closed", label: "Closed only" },
+  { value: "all", label: "All statuses" },
+];
+
+const SORTS: { value: "discoveredAt_desc" | "discoveredAt_asc" | "postedAt_desc" | "postedAt_asc"; label: string }[] = [
+  { value: "discoveredAt_desc", label: "Newest found first" },
+  { value: "discoveredAt_asc", label: "Oldest found first" },
+  { value: "postedAt_desc", label: "Newest posted first" },
+  { value: "postedAt_asc", label: "Oldest posted first" },
 ];
 
 function useDebounced<T>(value: T, delayMs: number): T {
@@ -72,6 +101,12 @@ export function Discovery() {
   const [category, setCategory] = useState("all");
   const [location, setLocation] = useState("");
   const [search, setSearch] = useState("");
+  const [source, setSource] = useState("all");
+  const [status, setStatus] = useState<"active" | "closed" | "all">("active");
+  const [sort, setSort] = useState<"discoveredAt_desc" | "discoveredAt_asc" | "postedAt_desc" | "postedAt_asc">(
+    "discoveredAt_desc"
+  );
+  const [hideDuplicates, setHideDuplicates] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [approvingIds, setApprovingIds] = useState<Set<string>>(new Set());
@@ -99,6 +134,10 @@ export function Discovery() {
         category: category === "all" ? undefined : category,
         location: debouncedLocation || undefined,
         q: debouncedSearch || undefined,
+        source: source === "all" ? undefined : source,
+        status,
+        sort,
+        hideDuplicates,
       });
       setPostings(data);
     } catch (err) {
@@ -111,7 +150,7 @@ export function Discovery() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [category, debouncedLocation, debouncedSearch]);
+  }, [category, debouncedLocation, debouncedSearch, source, status, sort, hideDuplicates]);
 
   const unreviewed = useMemo(() => postings.filter((p) => p.applications.length === 0), [postings]);
 
@@ -179,6 +218,17 @@ export function Discovery() {
     }
   }
 
+  async function rejectDuplicate(id: string) {
+    try {
+      const updated = await api.postings.update(id, { duplicateRejected: true });
+      toast.success("Kept as a separate posting");
+      setDetailPosting(updated);
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update posting");
+    }
+  }
+
   function toggleSelected(id: string) {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -224,6 +274,61 @@ export function Discovery() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-muted-foreground">Source</label>
+          <Select value={source} onValueChange={(v) => setSource(v ?? "all")}>
+            <SelectTrigger className="w-44">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {SOURCES.map((s) => (
+                <SelectItem key={s.value} value={s.value}>
+                  {s.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-muted-foreground">Status</label>
+          <Select value={status} onValueChange={(v) => setStatus((v as typeof status) ?? "active")}>
+            <SelectTrigger className="w-36">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {STATUSES.map((s) => (
+                <SelectItem key={s.value} value={s.value}>
+                  {s.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-muted-foreground">Sort</label>
+          <Select value={sort} onValueChange={(v) => setSort((v as typeof sort) ?? "discoveredAt_desc")}>
+            <SelectTrigger className="w-44">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {SORTS.map((s) => (
+                <SelectItem key={s.value} value={s.value}>
+                  {s.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center gap-1.5 pb-2">
+          <Checkbox
+            id="hide-duplicates"
+            checked={hideDuplicates}
+            onCheckedChange={(checked) => setHideDuplicates(checked === true)}
+          />
+          <label htmlFor="hide-duplicates" className="text-xs font-medium text-muted-foreground">
+            Hide flagged duplicates
+          </label>
         </div>
         <span className="ml-auto text-sm text-muted-foreground">
           {unreviewed.length} awaiting review of {postings.length} total
@@ -355,9 +460,36 @@ export function Discovery() {
                   <div className="text-sm text-muted-foreground">
                     {p.organization} · {p.location ?? "location unknown"}
                   </div>
-                  <Badge variant="secondary" className="mt-1">
-                    {p.category.replace(/_/g, " ")}
-                  </Badge>
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                    <Badge variant="secondary">{p.category.replace(/_/g, " ")}</Badge>
+                    {p.closedAt && (
+                      <Badge variant="outline" className="gap-1 border-amber-500/40 text-amber-700 dark:text-amber-400">
+                        <AlertTriangle className="h-3 w-3" />
+                        Closed
+                      </Badge>
+                    )}
+                    {p.possibleDuplicateOfId && !p.duplicateRejected && (
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={
+                            <button
+                              onClick={() => setDetailPosting(p.possibleDuplicateOf ?? p)}
+                              className="inline-flex"
+                            />
+                          }
+                        >
+                          <Badge variant="outline" className="gap-1 border-amber-500/40 text-amber-700 dark:text-amber-400">
+                            <CircleAlert className="h-3 w-3" />
+                            Possible duplicate
+                          </Badge>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          Possibly the same as: {p.possibleDuplicateOf?.title ?? "another posting"} @{" "}
+                          {p.possibleDuplicateOf?.organization ?? p.organization}
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                  </div>
                 </div>
                 <a
                   href={p.url}
@@ -390,6 +522,23 @@ export function Discovery() {
               {detailPosting?.organization} · {detailPosting?.location ?? "location unknown"}
             </DialogDescription>
           </DialogHeader>
+          {detailPosting?.closedAt && (
+            <div className="flex items-center gap-1.5 text-sm text-amber-700 dark:text-amber-400">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              This posting no longer appeared in the last {detailPosting.missedRuns} scrape(s) and is
+              considered closed.
+            </div>
+          )}
+          {detailPosting?.possibleDuplicateOfId && !detailPosting.duplicateRejected && (
+            <div className="flex items-center justify-between gap-3 rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm">
+              <span>
+                Possibly the same as: <strong>{detailPosting.possibleDuplicateOf?.title ?? "another posting"}</strong>
+              </span>
+              <Button size="sm" variant="outline" onClick={() => rejectDuplicate(detailPosting.id)}>
+                Not a duplicate — keep separate
+              </Button>
+            </div>
+          )}
           <div className="max-h-96 overflow-y-auto whitespace-pre-wrap text-sm text-foreground">
             {detailPosting?.description || "No description was captured for this posting."}
           </div>

@@ -12,7 +12,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ExternalLink, FileText, GripVertical, MapPin } from "lucide-react";
+import { AlertTriangle, ExternalLink, FileText, GripVertical, MapPin } from "lucide-react";
 import { api } from "../api/client";
 import type { Application, ApplicationStage, Document, PostingCategory } from "../api/types";
 import { Button } from "@/components/ui/button";
@@ -64,6 +64,29 @@ const CATEGORY_COLORS: Record<PostingCategory, string> = {
   DATA_SCIENCE: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200",
   OTHER: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
 };
+
+const SOURCE_LABELS: Record<string, string> = {
+  greenhouse: "Greenhouse",
+  lever: "Lever",
+  workday: "Workday",
+  adp: "ADP",
+  ukg: "UKG",
+  bamboohr: "BambooHR",
+  aaimtrack: "aaimtrack",
+  teamworkonline: "TeamWork Online",
+  dayforce: "Dayforce",
+  team_page: "Team page",
+  manual: "Manual",
+};
+
+// No date library is installed — this only needs whole-day granularity, so a small local helper
+// is simpler than adding a dependency.
+function relativeTime(isoDate: string): string {
+  const days = Math.floor((Date.now() - new Date(isoDate).getTime()) / 86_400_000);
+  if (days <= 0) return "today";
+  if (days === 1) return "1d ago";
+  return `${days}d ago`;
+}
 
 function docStatus(app: Application): { label: string; className: string } {
   const hasResume = !!app.resumeDocId;
@@ -175,9 +198,16 @@ function CardBody({
       </CardHeader>
       <CardContent className="px-3">
         <div className="flex items-center justify-between gap-2">
-          <Badge className={`${CATEGORY_COLORS[category]} border-none font-normal`}>
-            {category.replace(/_/g, " ")}
-          </Badge>
+          <div className="flex flex-wrap items-center gap-1">
+            <Badge className={`${CATEGORY_COLORS[category]} border-none font-normal`}>
+              {category.replace(/_/g, " ")}
+            </Badge>
+            {application.posting?.source?.type && (
+              <Badge variant="outline" className="font-normal text-muted-foreground">
+                {SOURCE_LABELS[application.posting.source.type] ?? application.posting.source.type}
+              </Badge>
+            )}
+          </div>
           <Tooltip>
             <TooltipTrigger
               render={
@@ -189,11 +219,44 @@ function CardBody({
             <TooltipContent>{status.label}</TooltipContent>
           </Tooltip>
         </div>
+        {application.posting?.closedAt && (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <div className="mt-1.5 flex w-fit items-center gap-1 text-xs text-amber-600 dark:text-amber-400" />
+              }
+            >
+              <AlertTriangle className="size-3" />
+              Posting closed
+            </TooltipTrigger>
+            <TooltipContent>
+              You're still working an application for a posting that's no longer live.
+            </TooltipContent>
+          </Tooltip>
+        )}
         {application.posting?.location && (
           <div className="mt-1.5 flex items-center gap-1 text-xs text-muted-foreground">
             <MapPin className="size-3" />
             {application.posting.location}
           </div>
+        )}
+        <div className="mt-1 text-[11px] text-muted-foreground">
+          {application.posting?.postedAt
+            ? `Posted ${relativeTime(application.posting.postedAt)}`
+            : application.posting?.discoveredAt
+              ? `Found ${relativeTime(application.posting.discoveredAt)}`
+              : null}
+        </div>
+        {application.notes && (
+          <button
+            onClick={onOpenDetail}
+            onPointerDown={(e) => e.stopPropagation()}
+            className="mt-1 line-clamp-1 text-left text-[11px] text-muted-foreground hover:text-foreground"
+            title={application.notes}
+          >
+            {application.notes.slice(0, 60)}
+            {application.notes.length > 60 ? "…" : ""}
+          </button>
         )}
         <div className="mt-2 flex items-center gap-2">
           <button

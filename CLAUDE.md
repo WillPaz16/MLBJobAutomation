@@ -166,6 +166,48 @@ React UI, all running on this machine — nothing is deployed anywhere.
   already existed) — previously it was one dialog-click deep in Discovery only and completely
   absent from Pipeline, so getting back to the real job page meant re-finding the posting in
   Discovery from scratch.
+- **Active/inactive posting tracking** (`Posting.lastSeenAt`/`closedAt`/`missedRuns`,
+  `scrapers/src/ingest.ts`). A posting is marked `closedAt` after **2 consecutive** scrape runs of
+  its `(sourceId, organization)` fail to find it — not 1, so a single flaky/partial run can't
+  wrongly close everything from that org. **This scoping is critical and easy to get wrong**: one
+  `Source` row is shared across every org an adapter covers (e.g. all Greenhouse-hosted teams share
+  the `"greenhouse"` `Source`), so the closing pass must never compare against `sourceId` alone —
+  `ingestPostings` now takes an explicit `organization` argument (not derived from the `postings`
+  array, since an org with zero current postings still needs the closing pass to run) so this stays
+  correctly scoped per call. A closed posting automatically reopens (`closedAt` cleared,
+  `missedRuns` reset) if it reappears in a later run. Surfaced as a `status` filter on
+  `GET /api/postings` (`active` default | `closed` | `all`) and a "Closed"/"Posting closed" badge
+  in both Discovery and Pipeline — the Pipeline one matters most: it's the signal that you're still
+  working an application for a job that's no longer live.
+- **Cross-source duplicate suppression was a real bug, now fixed.** `dedupe.ts`'s fuzzy title match
+  used to silently skip inserting a posting the moment it looked like a duplicate of an existing
+  one from the same org — no record, no way to review, so a genuinely different job could vanish
+  before ever being seen. `ingestPostings` now inserts the posting as its own real row and links it
+  via `Posting.possibleDuplicateOfId` instead, with a `duplicateRejected` flag the user can set
+  (`PATCH /api/postings/:id`) to say "not actually a duplicate, keep separate." Discovery shows a
+  "Possible duplicate" badge with a tooltip linking to the matched posting, and a "Hide flagged
+  duplicates" checkbox (default on) via the `hideDuplicates` query param — filterable, not forced.
+  **When combining this with other `where` filters in `postings.ts`, don't put two conditions under
+  the same `OR` key** — they silently clobber each other (later key wins in the object literal);
+  use `AND: [...]` to combine independent `OR` blocks, which is what a real bug caught in review
+  here and a regression test now guards against.
+- **Discovery filtering** now includes `source` (ATS platform type, e.g. `greenhouse`/`dayforce` —
+  not individual org, since org search is already covered by the existing `q` text search),
+  `status` (see above), and `sort` (`discoveredAt`/`postedAt`, asc/desc) — all server-side query
+  params on `GET /api/postings`, following the same debounced pattern as the pre-existing
+  `category`/`location`/`q` filters. `postedAt` is nullable and SQLite's default null-ordering
+  applies (no special NULLS LAST handling) — a known, accepted minor limitation, not a bug.
+- **Kanban cards show more at a glance**: source platform badge, relative "Posted Nd ago" (falling
+  back to "Found Nd ago" from `discoveredAt` if `postedAt` is null — no date library is installed,
+  it's a small local helper next to `docStatus()`), and a truncated notes preview. Deliberately
+  skipped: explicit stage text (redundant with the column header).
+- **Color theme is MLB-inspired (navy + red + white), not grayscale** — all in
+  `ui/src/index.css`'s `:root`/`.dark`/`@theme inline` blocks (Tailwind v4 CSS-first, no JS config
+  file exists). Both light and dark variants were updated together, per the existing dark-mode
+  convention. `Pipeline.tsx`'s `CATEGORY_COLORS` (fixed Tailwind blue/purple/teal/amber/gray
+  classes for category badges) intentionally weren't touched — they're literal Tailwind utility
+  classes, not driven by the CSS variables, so there's no actual collision risk with the new navy
+  primary/red accent to reconcile despite it looking like an obvious thing to check.
 - **Semantic/embedding-based job matching is deferred, not built.** Postgres/pgvector was
   evaluated and explicitly rejected — this system is nowhere near the data volume where a vector
   database would matter, brute-force cosine similarity in SQLite would be plenty if the feature

@@ -36,6 +36,7 @@ export const updatePostingSchema = z.object({
   location: z.string().optional(),
   category: postingCategorySchema.optional(),
   description: z.string().optional(),
+  duplicateRejected: z.boolean().optional(),
 });
 
 export const createDocumentSchema = z.object({

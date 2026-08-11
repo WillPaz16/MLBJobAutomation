@@ -3,6 +3,12 @@
 // different sources under different IDs and slightly different title text (e.g. an org posting
 // the same role to both TeamWork Online and Dayforce, worded differently on each platform). This
 // does fuzzy title matching, scoped to postings from the same organization, as a second pass.
+//
+// A match here does NOT skip inserting the posting — it used to, but that meant a genuinely
+// different job could be silently suppressed from Discovery on nothing more than wording overlap,
+// with no record and no way to review the call. `ingestPostings` now inserts the posting as a real
+// row and links it via `possibleDuplicateOfId`, so the user can see the flagged pair and reject a
+// wrong match themselves instead of a job just vanishing before they ever saw it.
 const STOPWORDS = new Set(["and", "the", "of", "a", "an", "for", "to", "in", "at", "on", "&"]);
 
 // Tuned against a real observed pair: Dayforce's "Coordinator-Community Partnerships and
