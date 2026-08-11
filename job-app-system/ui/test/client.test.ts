@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, ApiError } from "../src/api/client";
 
-function mockFetch(response: Partial<Response> & { jsonBody?: unknown }) {
+function mockFetch(response: Partial<Response> & { jsonBody?: unknown; totalCount?: string }) {
   return vi.fn().mockResolvedValue({
     ok: response.ok ?? true,
     status: response.status ?? 200,
     json: async () => response.jsonBody,
-  } as Response);
+    headers: { get: (name: string) => (name === "X-Total-Count" ? (response.totalCount ?? null) : null) },
+  } as unknown as Response);
 }
 
 describe("api client", () => {
@@ -18,10 +19,16 @@ describe("api client", () => {
     vi.unstubAllGlobals();
   });
 
-  it("returns parsed JSON on success", async () => {
-    vi.stubGlobal("fetch", mockFetch({ ok: true, jsonBody: [{ id: "1" }] }));
+  it("returns parsed postings plus the total count from the X-Total-Count header", async () => {
+    vi.stubGlobal("fetch", mockFetch({ ok: true, jsonBody: [{ id: "1" }], totalCount: "42" }));
     const result = await api.postings.list();
-    expect(result).toEqual([{ id: "1" }]);
+    expect(result).toEqual({ postings: [{ id: "1" }], total: 42 });
+  });
+
+  it("falls back to the returned page length when X-Total-Count is missing", async () => {
+    vi.stubGlobal("fetch", mockFetch({ ok: true, jsonBody: [{ id: "1" }, { id: "2" }] }));
+    const result = await api.postings.list();
+    expect(result.total).toBe(2);
   });
 
   it("omits empty/undefined query params", async () => {

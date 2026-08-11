@@ -16,6 +16,7 @@ import { AlertTriangle, ExternalLink, FileText, GripVertical, MapPin } from "luc
 import { api } from "../api/client";
 import type { Application, ApplicationStage, Document, PostingCategory } from "../api/types";
 import { htmlToPlainText } from "@/lib/utils";
+import { CATEGORY_LABELS } from "@/lib/labels";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -205,7 +206,7 @@ function CardBody({
         <div className="flex items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-1">
             <Badge className={`${CATEGORY_COLORS[category]} border-none font-normal`}>
-              {category.replace(/_/g, " ")}
+              {CATEGORY_LABELS[category]}
             </Badge>
             {application.posting?.source?.type && (
               <Badge variant="outline" className="font-normal text-muted-foreground">

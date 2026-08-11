@@ -46,6 +46,17 @@ describe("GET /api/postings", () => {
     expect(res.body).toHaveLength(1);
   });
 
+  it("exposes the total matching count via X-Total-Count while the body stays capped by take", async () => {
+    await createPosting({ category: "DATA_SCIENCE" });
+    await createPosting({ category: "DATA_SCIENCE" });
+    await createPosting({ category: "DATA_SCIENCE" });
+    await createPosting({ category: "BASEBALL_OPS" }); // excluded by the filter below
+
+    const res = await request(app).get("/api/postings?category=DATA_SCIENCE&take=2");
+    expect(res.headers["x-total-count"]).toBe("3"); // full filtered count, not just this page
+    expect(res.body).toHaveLength(2); // page size still respected
+  });
+
   it("rejects an out-of-range take value", async () => {
     const res = await request(app).get("/api/postings?take=99999");
     expect(res.status).toBe(400);

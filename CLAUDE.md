@@ -251,6 +251,45 @@ React UI, all running on this machine — nothing is deployed anywhere.
   classes for category badges) intentionally weren't touched — they're literal Tailwind utility
   classes, not driven by the CSS variables, so there's no actual collision risk with the new navy
   primary/red accent to reconcile despite it looking like an obvious thing to check.
+- **`npx tsc --noEmit` in `ui/` silently checks nothing — use `npx tsc -b` (build mode).**
+  `ui/tsconfig.json` is a project-references root with `"files": []`; plain `tsc --noEmit` against
+  it has zero files to check and exits clean regardless of real errors in `src/`. This is a real
+  footgun — a stretch of "type-check passed" claims in one session turned out to be false
+  positives from calling it wrong, only caught when `tsc -b` was used instead and immediately
+  surfaced a genuine error. `api/` and `scrapers/` don't have this problem (plain non-composite
+  tsconfigs) — this gotcha is specific to `ui/`'s project-references setup.
+- **Discovery is paginated** (`ui/src/components/Pagination.tsx`, composed from the existing
+  `Button`/`Select` — no pagination primitive exists in `ui/src/components/ui`, and none was
+  added for this). `GET /api/postings` returns the same bare-array body as always (zero breaking
+  changes to existing consumers/tests) but now also sets an `X-Total-Count` response header via a
+  `prisma.posting.count({ where })` alongside the existing `findMany` — the frontend's
+  `api.postings.list()` is the one place that reads it, returning `{ postings, total }` instead of
+  a bare array (every other endpoint's `request()` helper is untouched). Page size is selectable
+  (25/50/100, default 25); changing any filter or the page size resets to page 1 via a dedicated
+  effect, kept separate from the fetch effect to avoid restructuring it.
+- **Category/stage/source label casing has one shared source of truth now**:
+  `ui/src/lib/labels.ts` exports `CATEGORY_LABELS` (exact map, e.g. `"Baseball R&D"`) and
+  `prettifyLabel()` (generic snake_case/ALLCAPS → Title Case fallback, for open-ended keys like
+  Analytics' by-source breakdown where there's no fixed enum to map). Previously every page
+  (`Discovery.tsx`, `Pipeline.tsx`, `Prep.tsx`, `Analytics.tsx`) did its own
+  `.replace(/_/g, " ")`, which turned `BASEBALL_RND` into all-caps "BASEBALL RND" with no
+  ampersand — a real, visible bug, not just a style nit. Button labels sitewide are sentence case
+  (`"Approve to apply"`, not `"Approve to Apply"`) — Title Case is reserved for nav links only.
+- **Home page** (`ui/src/pages/Home.tsx`, route `/`) is the app's actual landing page now —
+  Discovery moved to `/discovery` with its own nav entry. Home shows a time-of-day greeting, the
+  shared `NotificationBanner` (extracted from Discovery into `ui/src/components/
+  NotificationBanner.tsx` since both pages need it), a few top-line stats, and quick-link cards
+  into Discovery/Pipeline/Prep. Deliberately reuses existing endpoints only (`api.postings.list`,
+  `api.applications.list`, `api.analytics.summary`) — no new backend work for this page. Entrance
+  animation is hand-rolled with `tw-animate-css` (`animate-in fade-in slide-in-from-bottom-*`,
+  already installed) — no motion library was added.
+- **Composing `Button` with `render={<Link .../>}` needs `nativeButton={false}`.** Base UI's
+  Button primitive expects the rendered element to actually be a `<button>` unless told otherwise
+  — omitting `nativeButton={false}` when rendering as a React Router `Link` (an `<a>`) throws a
+  console warning about lost native button semantics even though the component still works
+  visually. Caught live in the browser, not by type-checking (this is a runtime prop-contract
+  issue, not a type error) — another entry in the running list of Base-UI-not-Radix gotchas this
+  project has hit.
 - **Semantic/embedding-based job matching is deferred, not built.** Postgres/pgvector was
   evaluated and explicitly rejected — this system is nowhere near the data volume where a vector
   database would matter, brute-force cosine similarity in SQLite would be plenty if the feature

@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { ExternalLink } from "lucide-react";
 import { api } from "../api/client";
 import type { Application } from "../api/types";
+import { CATEGORY_LABELS } from "@/lib/labels";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -104,7 +105,7 @@ export function Prep() {
                   </div>
                   {app.posting?.category && (
                     <Badge variant="secondary" className="mt-1">
-                      {app.posting.category.replace(/_/g, " ")}
+                      {CATEGORY_LABELS[app.posting.category]}
                     </Badge>
                   )}
                 </div>

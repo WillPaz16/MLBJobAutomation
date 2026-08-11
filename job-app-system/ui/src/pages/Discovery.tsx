@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { AlertTriangle, CircleAlert, ExternalLink, X } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../api/client";
 import type { Posting, PostingCategory } from "../api/types";
 import { htmlToPlainText } from "@/lib/utils";
+import { CATEGORY_LABELS } from "@/lib/labels";
+import { Pagination } from "@/components/Pagination";
+import { NotificationBanner } from "@/components/NotificationBanner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -53,35 +56,6 @@ function useDebounced<T>(value: T, delayMs: number): T {
   return debounced;
 }
 
-function NotificationBanner() {
-  const [latest, setLatest] = useState<{ summary: string; createdAt: string } | null>(null);
-
-  useEffect(() => {
-    api.notifications
-      .list()
-      .then((logs) => setLatest(logs[0] ?? null))
-      .catch(() => {
-        // silently skip — a failed notification fetch shouldn't block the rest of the page
-      });
-  }, []);
-
-  if (!latest) return null;
-  const isFailure = latest.summary.startsWith("⚠️");
-
-  return (
-    <div
-      className={`mb-4 rounded-md border px-3 py-2 text-sm ${
-        isFailure
-          ? "border-destructive/30 bg-destructive/5 text-destructive"
-          : "border bg-muted/40 text-muted-foreground"
-      }`}
-    >
-      <span className="font-medium">Last discovery run</span> ({new Date(latest.createdAt).toLocaleString()}):{" "}
-      {latest.summary}
-    </div>
-  );
-}
-
 export function Discovery() {
   const [postings, setPostings] = useState<Posting[]>([]);
   const [category, setCategory] = useState("all");
@@ -95,6 +69,9 @@ export function Discovery() {
   );
   const [hideDuplicates, setHideDuplicates] = useState(true);
   const [showDismissed, setShowDismissed] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [approvingIds, setApprovingIds] = useState<Set<string>>(new Set());
@@ -118,7 +95,7 @@ export function Discovery() {
     setLoading(true);
     setError(null);
     try {
-      const data = await api.postings.list({
+      const { postings: data, total: newTotal } = await api.postings.list({
         category: category === "all" ? undefined : category,
         location: debouncedLocation || undefined,
         q: debouncedSearch || undefined,
@@ -127,8 +104,11 @@ export function Discovery() {
         sort,
         hideDuplicates,
         showDismissed,
+        take: pageSize,
+        skip: (page - 1) * pageSize,
       });
       setPostings(data);
+      setTotal(newTotal);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load postings");
     } finally {
@@ -136,10 +116,17 @@ export function Discovery() {
     }
   }
 
+  // Any filter (or page size) change invalidates the current page — reset before the fetch effect
+  // below re-runs, so a filter change never leaves the user stranded on an out-of-range page.
+  useEffect(() => {
+    setPage(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [category, debouncedLocation, debouncedSearch, organization, status, sort, hideDuplicates, showDismissed, pageSize]);
+
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [category, debouncedLocation, debouncedSearch, organization, status, sort, hideDuplicates, showDismissed]);
+  }, [category, debouncedLocation, debouncedSearch, organization, status, sort, hideDuplicates, showDismissed, page, pageSize]);
 
   useEffect(() => {
     api.postings
@@ -149,8 +136,6 @@ export function Discovery() {
         // silently skip — the organization filter just stays empty if this fails
       });
   }, []);
-
-  const unreviewed = useMemo(() => postings.filter((p) => p.applications.length === 0), [postings]);
 
   async function approve(id: string) {
     setApprovingIds((prev) => new Set(prev).add(id));
@@ -362,7 +347,9 @@ export function Discovery() {
           </label>
         </div>
         <span className="ml-auto text-sm text-muted-foreground">
-          {unreviewed.length} awaiting review of {postings.length} total
+          {total === 0
+            ? "0 matching"
+            : `Showing ${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, total)} of ${total}`}
         </span>
         <Dialog open={manualOpen} onOpenChange={setManualOpen}>
           <DialogTrigger render={<Button variant="outline" size="sm" />}>Add posting manually</DialogTrigger>
@@ -439,7 +426,7 @@ export function Discovery() {
         <div className="mb-4 flex items-center gap-3 rounded-md border bg-accent/40 px-3 py-2">
           <span className="text-sm">{selected.size} selected</span>
           <Button size="sm" onClick={approveSelected} disabled={bulkApproving}>
-            {bulkApproving ? "Approving…" : "Approve Selected"}
+            {bulkApproving ? "Approving…" : "Approve selected"}
           </Button>
           <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
             Clear
@@ -492,7 +479,7 @@ export function Discovery() {
                     {p.organization} · {p.location ?? "location unknown"}
                   </div>
                   <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                    <Badge variant="secondary">{p.category.replace(/_/g, " ")}</Badge>
+                    <Badge variant="secondary">{CATEGORY_LABELS[p.category]}</Badge>
                     {p.dismissedAt && <Badge variant="outline">Dismissed</Badge>}
                     {p.closedAt && (
                       <Badge variant="outline" className="gap-1 border-amber-500/40 text-amber-700 dark:text-amber-400">
@@ -537,7 +524,7 @@ export function Discovery() {
               <div className="flex items-center gap-2">
                 {p.applications.length === 0 ? (
                   <Button onClick={() => approve(p.id)} disabled={approvingIds.has(p.id)}>
-                    {approvingIds.has(p.id) ? "Approving…" : "Approve to Apply"}
+                    {approvingIds.has(p.id) ? "Approving…" : "Approve to apply"}
                   </Button>
                 ) : (
                   <Badge variant="outline">In pipeline</Badge>
@@ -563,6 +550,16 @@ export function Discovery() {
             </div>
           ))}
         </div>
+      )}
+
+      {!loading && !error && total > 0 && (
+        <Pagination
+          page={page}
+          totalPages={Math.ceil(total / pageSize)}
+          onPageChange={setPage}
+          pageSize={pageSize}
+          onPageSizeChange={setPageSize}
+        />
       )}
 
       <Dialog open={!!detailPosting} onOpenChange={(open) => !open && setDetailPosting(null)}>

@@ -14,7 +14,11 @@ import { runDailyDiscovery, startScheduler } from "./scheduler.js";
 
 export function createApp() {
   const app = express();
-  app.use(cors());
+  // exposedHeaders: the dev UI reaches this via Vite's same-origin proxy (no CORS involved there),
+  // but a browser fetch from a genuinely cross-origin caller can't read custom response headers
+  // like X-Total-Count without this — cheap to set correctly now rather than only working by
+  // accident of the current dev setup.
+  app.use(cors({ exposedHeaders: ["X-Total-Count"] }));
   app.use(express.json());
 
   app.use("/api/postings", postingsRouter);

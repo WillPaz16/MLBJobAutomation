@@ -35,7 +35,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
 export const api = {
   postings: {
-    list: (params?: {
+    list: async (params?: {
       category?: string;
       location?: string;
       q?: string;
@@ -47,13 +47,30 @@ export const api = {
       showDismissed?: boolean;
       take?: number;
       skip?: number;
-    }) => {
+    }): Promise<{ postings: Posting[]; total: number }> => {
       const entries = Object.entries(params ?? {}).filter(([, v]) => v !== undefined && v !== "") as [
         string,
         string,
       ][];
       const q = new URLSearchParams(entries.map(([k, v]) => [k, String(v)])).toString();
-      return request<Posting[]>(`/postings${q ? `?${q}` : ""}`);
+      const res = await fetch(`${BASE}/postings${q ? `?${q}` : ""}`, {
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!res.ok) {
+        let message = `GET /postings failed: ${res.status}`;
+        let details: unknown;
+        try {
+          const body = await res.json();
+          if (body?.error) message = body.error;
+          details = body?.details;
+        } catch {
+          // response body wasn't JSON — fall back to the generic message above
+        }
+        throw new ApiError(res.status, message, details);
+      }
+      const postings = (await res.json()) as Posting[];
+      const total = Number(res.headers.get("X-Total-Count") ?? postings.length);
+      return { postings, total };
     },
     organizations: () => request<string[]>("/postings/organizations"),
     approve: (id: string) => request<Application>(`/postings/${id}/approve`, { method: "POST" }),

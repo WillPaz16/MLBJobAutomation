@@ -9,7 +9,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 const links = [
-  { to: "/", label: "Discovery" },
+  { to: "/", label: "Home", end: true },
+  { to: "/discovery", label: "Discovery" },
   { to: "/pipeline", label: "Pipeline" },
   { to: "/prep", label: "Prep" },
   { to: "/documents", label: "Documents" },
@@ -29,7 +30,7 @@ export function Nav() {
 
       <div className="hidden gap-1 sm:flex">
         {links.map((link) => (
-          <NavLink key={link.to} to={link.to} className={linkClass}>
+          <NavLink key={link.to} to={link.to} end={link.end} className={linkClass}>
             {link.label}
           </NavLink>
         ))}
@@ -42,7 +43,7 @@ export function Nav() {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             {links.map((link) => (
-              <DropdownMenuItem key={link.to} render={<NavLink to={link.to} />}>
+              <DropdownMenuItem key={link.to} render={<NavLink to={link.to} end={link.end} />}>
                 {link.label}
               </DropdownMenuItem>
             ))}

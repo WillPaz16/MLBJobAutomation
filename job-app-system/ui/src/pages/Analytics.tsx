@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { AnalyticsSummary } from "../api/types";
 import { Skeleton } from "@/components/ui/skeleton";
+import { prettifyLabel } from "@/lib/labels";
+import { Card, CardContent } from "@/components/ui/card";
 
 export function Analytics() {
   const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
@@ -77,10 +79,12 @@ export function Analytics() {
 
 function Stat({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="rounded-lg border p-4">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="text-2xl font-semibold text-foreground">{value}</div>
-    </div>
+    <Card>
+      <CardContent>
+        <div className="text-xs text-muted-foreground">{label}</div>
+        <div className="text-2xl font-semibold text-foreground">{value}</div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -93,7 +97,7 @@ function Breakdown({ title, data }: { title: string; data: Record<string, number
       <div className="space-y-2">
         {entries.map(([key, value]) => (
           <div key={key} className="flex items-center gap-2 text-sm">
-            <span className="w-32 shrink-0 text-muted-foreground">{key.replace(/_/g, " ")}</span>
+            <span className="w-32 shrink-0 text-muted-foreground">{prettifyLabel(key)}</span>
             <div className="h-2 flex-1 rounded bg-muted">
               <div className="h-2 rounded bg-primary" style={{ width: `${(value / max) * 100}%` }} />
             </div>

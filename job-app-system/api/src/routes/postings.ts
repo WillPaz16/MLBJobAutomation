@@ -22,29 +22,35 @@ postingsRouter.get(
     const statusFilter =
       status === "closed" ? { closedAt: { not: null } } : status === "all" ? {} : { closedAt: null };
 
-    const postings = await prisma.posting.findMany({
-      where: {
-        category: category ? (category as string) : undefined,
-        location: location ? { contains: location as string } : undefined,
-        source: source ? { type: source as string } : undefined,
-        organization: organization ? (organization as string) : undefined,
-        dismissedAt: showDismissed === "true" ? undefined : null,
-        ...statusFilter,
-        AND: [
-          q
-            ? { OR: [{ title: { contains: q as string } }, { organization: { contains: q as string } }] }
-            : {},
-          hideDuplicates === "true" ? { OR: [{ possibleDuplicateOfId: null }, { duplicateRejected: true }] } : {},
-        ],
-      },
-      include: { source: true, applications: true, possibleDuplicateOf: true },
-      orderBy:
-        typeof sort === "string" && sort in SORT_OPTIONS
-          ? SORT_OPTIONS[sort as keyof typeof SORT_OPTIONS]
-          : SORT_OPTIONS.discoveredAt_desc,
-      take,
-      skip,
-    });
+    const where = {
+      category: category ? (category as string) : undefined,
+      location: location ? { contains: location as string } : undefined,
+      source: source ? { type: source as string } : undefined,
+      organization: organization ? (organization as string) : undefined,
+      dismissedAt: showDismissed === "true" ? undefined : null,
+      ...statusFilter,
+      AND: [
+        q ? { OR: [{ title: { contains: q as string } }, { organization: { contains: q as string } }] } : {},
+        hideDuplicates === "true" ? { OR: [{ possibleDuplicateOfId: null }, { duplicateRejected: true }] } : {},
+      ],
+    };
+
+    const [postings, total] = await Promise.all([
+      prisma.posting.findMany({
+        where,
+        include: { source: true, applications: true, possibleDuplicateOf: true },
+        orderBy:
+          typeof sort === "string" && sort in SORT_OPTIONS
+            ? SORT_OPTIONS[sort as keyof typeof SORT_OPTIONS]
+            : SORT_OPTIONS.discoveredAt_desc,
+        take,
+        skip,
+      }),
+      prisma.posting.count({ where }),
+    ]);
+    // Exposed via a header, not the body, so the response stays a bare array — every existing
+    // consumer/test asserting on res.body directly keeps working unchanged.
+    res.set("X-Total-Count", String(total));
     res.json(postings);
   })
 );
