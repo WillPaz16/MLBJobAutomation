@@ -8,6 +8,7 @@ import { Pipeline } from "./pages/Pipeline";
 import { Prep } from "./pages/Prep";
 import { Documents } from "./pages/Documents";
 import { Analytics } from "./pages/Analytics";
+import { Compatibility } from "./pages/Compatibility";
 import { NotFound } from "./pages/NotFound";
 
 export function App() {
@@ -22,6 +23,7 @@ export function App() {
           <Route path="/prep" element={<Prep />} />
           <Route path="/documents" element={<Documents />} />
           <Route path="/analytics" element={<Analytics />} />
+          <Route path="/compatibility" element={<Compatibility />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
         <Toaster />

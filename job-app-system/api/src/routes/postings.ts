@@ -3,8 +3,20 @@ import { createHash } from "crypto";
 import { prisma } from "../db.js";
 import { asyncHandler, HttpError } from "../asyncHandler.js";
 import { createManualPostingSchema, paginationSchema, updatePostingSchema } from "../validation.js";
+import { computeFitScore } from "../fitScore.js";
 
 export const postingsRouter = Router();
+
+// posting rows carry more fields than FitScorePosting needs — this keeps computeFitScore's
+// signature narrow/pure while still accepting the richer Prisma result shape.
+function withFitScore<T extends { title: string; organization: string; category: string; location: string | null; description: string | null }>(
+  posting: T,
+  profile: { skills: string; preferredCategories: string | null; locationKeywords: string | null; excludeKeywords: string | null } | null
+): T & { fitScore?: number; matchedSkills?: string[] } {
+  if (!profile) return posting;
+  const { score, matchedSkills } = computeFitScore(posting, profile);
+  return { ...posting, fitScore: score, matchedSkills };
+}
 
 const SORT_OPTIONS = {
   discoveredAt_desc: { discoveredAt: "desc" as const },
@@ -35,6 +47,28 @@ postingsRouter.get(
       ],
     };
 
+    const profile = await prisma.candidateProfile.findUnique({ where: { id: "profile" } });
+
+    if (sort === "fit_desc") {
+      // Fit score isn't a DB column, so it can't go through Prisma's orderBy — fetch every
+      // matching row (no take/skip here), score+sort in JS, then slice the page ourselves.
+      const [allPostings, total] = await Promise.all([
+        prisma.posting.findMany({
+          where,
+          include: { source: true, applications: true, possibleDuplicateOf: true },
+        }),
+        prisma.posting.count({ where }),
+      ]);
+      const scored = allPostings.map((p) => withFitScore(p, profile));
+      scored.sort((a, b) => (b.fitScore ?? 0) - (a.fitScore ?? 0));
+      const start = skip ?? 0;
+      const end = take !== undefined ? start + take : undefined;
+      const paged = scored.slice(start, end);
+      res.set("X-Total-Count", String(total));
+      res.json(paged);
+      return;
+    }
+
     const [postings, total] = await Promise.all([
       prisma.posting.findMany({
         where,
@@ -51,7 +85,7 @@ postingsRouter.get(
     // Exposed via a header, not the body, so the response stays a bare array — every existing
     // consumer/test asserting on res.body directly keeps working unchanged.
     res.set("X-Total-Count", String(total));
-    res.json(postings);
+    res.json(postings.map((p) => withFitScore(p, profile)));
   })
 );
 

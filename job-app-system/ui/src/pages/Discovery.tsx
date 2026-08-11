@@ -14,6 +14,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Dialog,
@@ -40,12 +41,27 @@ const STATUSES: { value: "active" | "closed" | "all"; label: string }[] = [
   { value: "all", label: "All statuses" },
 ];
 
-const SORTS: { value: "discoveredAt_desc" | "discoveredAt_asc" | "postedAt_desc" | "postedAt_asc"; label: string }[] = [
+type SortOption = "discoveredAt_desc" | "discoveredAt_asc" | "postedAt_desc" | "postedAt_asc" | "fit_desc";
+
+const SORTS: { value: SortOption; label: string }[] = [
   { value: "discoveredAt_desc", label: "Newest found first" },
   { value: "discoveredAt_asc", label: "Oldest found first" },
   { value: "postedAt_desc", label: "Newest posted first" },
   { value: "postedAt_asc", label: "Oldest posted first" },
+  { value: "fit_desc", label: "Best fit first" },
 ];
+
+// Fit badge tiering — reuses the existing amber-badge convention (closed/possible-duplicate)
+// for the middle tier rather than inventing a new palette.
+function fitBadgeClassName(score: number): string {
+  if (score >= 70) {
+    return "gap-1 border-green-500/40 text-green-700 dark:text-green-400";
+  }
+  if (score >= 40) {
+    return "gap-1 border-amber-500/40 text-amber-700 dark:text-amber-400";
+  }
+  return "gap-1 text-muted-foreground";
+}
 
 function useDebounced<T>(value: T, delayMs: number): T {
   const [debounced, setDebounced] = useState(value);
@@ -64,9 +80,7 @@ export function Discovery() {
   const [organization, setOrganization] = useState("all");
   const [organizations, setOrganizations] = useState<string[]>([]);
   const [status, setStatus] = useState<"active" | "closed" | "all">("active");
-  const [sort, setSort] = useState<"discoveredAt_desc" | "discoveredAt_asc" | "postedAt_desc" | "postedAt_asc">(
-    "discoveredAt_desc"
-  );
+  const [sort, setSort] = useState<SortOption>("discoveredAt_desc");
   const [hideDuplicates, setHideDuplicates] = useState(true);
   const [showDismissed, setShowDismissed] = useState(false);
   const [page, setPage] = useState(1);
@@ -455,99 +469,118 @@ export function Discovery() {
       ) : (
         <div className="grid gap-3">
           {postings.map((p) => (
-            <div
-              key={p.id}
-              className="flex items-center justify-between gap-3 rounded-lg border p-4"
-            >
-              <div className="flex items-start gap-3">
-                {p.applications.length === 0 && (
-                  <Checkbox
-                    checked={selected.has(p.id)}
-                    onCheckedChange={() => toggleSelected(p.id)}
-                    className="mt-1"
-                    aria-label={`Select ${p.title}`}
-                  />
-                )}
-                <div>
-                  <button
-                    className="text-left font-medium text-foreground hover:underline"
-                    onClick={() => setDetailPosting(p)}
-                  >
-                    {p.title}
-                  </button>
-                  <div className="text-sm text-muted-foreground">
-                    {p.organization} · {p.location ?? "location unknown"}
-                  </div>
-                  <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                    <Badge variant="secondary">{CATEGORY_LABELS[p.category]}</Badge>
-                    {p.dismissedAt && <Badge variant="outline">Dismissed</Badge>}
-                    {p.closedAt && (
-                      <Badge variant="outline" className="gap-1 border-amber-500/40 text-amber-700 dark:text-amber-400">
-                        <AlertTriangle className="h-3 w-3" />
-                        Closed
-                      </Badge>
+            <Card key={p.id}>
+              <CardHeader>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    {p.applications.length === 0 && (
+                      <Checkbox
+                        checked={selected.has(p.id)}
+                        onCheckedChange={() => toggleSelected(p.id)}
+                        className="mt-1"
+                        aria-label={`Select ${p.title}`}
+                      />
                     )}
-                    {p.possibleDuplicateOfId && !p.duplicateRejected && (
-                      <Tooltip>
-                        <TooltipTrigger
-                          render={
-                            <button
-                              onClick={() => setDetailPosting(p.possibleDuplicateOf ?? p)}
-                              className="inline-flex"
-                            />
-                          }
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          className="text-left font-medium text-foreground hover:underline"
+                          onClick={() => setDetailPosting(p)}
                         >
-                          <Badge variant="outline" className="gap-1 border-amber-500/40 text-amber-700 dark:text-amber-400">
-                            <CircleAlert className="h-3 w-3" />
-                            Possible duplicate
-                          </Badge>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          Possibly the same as: {p.possibleDuplicateOf?.title ?? "another posting"} @{" "}
-                          {p.possibleDuplicateOf?.organization ?? p.organization}
-                        </TooltipContent>
-                      </Tooltip>
-                    )}
+                          {p.title}
+                        </button>
+                        <a
+                          href={p.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center text-muted-foreground hover:text-primary"
+                          aria-label={`Open original posting for ${p.title}`}
+                          title="Open original posting"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </a>
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        {p.organization} · {p.location ?? "location unknown"}
+                      </div>
+                    </div>
                   </div>
                 </div>
-                <a
-                  href={p.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-1 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-primary hover:underline"
-                  aria-label={`Open original posting for ${p.title}`}
-                  title="Open original posting"
-                >
-                  <ExternalLink className="h-3.5 w-3.5" />
-                </a>
-              </div>
-              <div className="flex items-center gap-2">
-                {p.applications.length === 0 ? (
-                  <Button onClick={() => approve(p.id)} disabled={approvingIds.has(p.id)}>
-                    {approvingIds.has(p.id) ? "Approving…" : "Approve to apply"}
-                  </Button>
-                ) : (
-                  <Badge variant="outline">In pipeline</Badge>
-                )}
-                {p.dismissedAt ? (
-                  <Button variant="ghost" size="sm" onClick={() => undismiss(p.id)}>
-                    Restore
-                  </Button>
-                ) : (
-                  p.applications.length === 0 && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => dismiss(p.id)}
-                      aria-label={`Dismiss ${p.title}`}
-                      title="Not interested — dismiss"
-                    >
-                      <X className="h-4 w-4" />
+              </CardHeader>
+              <CardContent>
+                <div className="mb-3 flex flex-wrap items-center gap-1.5">
+                  <Badge variant="secondary">{CATEGORY_LABELS[p.category]}</Badge>
+                  {p.fitScore != null && (
+                    <Tooltip>
+                      <TooltipTrigger render={<span className="inline-flex" />}>
+                        <Badge variant="outline" className={fitBadgeClassName(p.fitScore)}>
+                          {p.fitScore}% fit
+                        </Badge>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {p.matchedSkills && p.matchedSkills.length > 0
+                          ? `Matched skills: ${p.matchedSkills.join(", ")}`
+                          : "No skills matched your compatibility profile"}
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                  {p.dismissedAt && <Badge variant="outline">Dismissed</Badge>}
+                  {p.closedAt && (
+                    <Badge variant="outline" className="gap-1 border-amber-500/40 text-amber-700 dark:text-amber-400">
+                      <AlertTriangle className="h-3 w-3" />
+                      Closed
+                    </Badge>
+                  )}
+                  {p.possibleDuplicateOfId && !p.duplicateRejected && (
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <button
+                            onClick={() => setDetailPosting(p.possibleDuplicateOf ?? p)}
+                            className="inline-flex"
+                          />
+                        }
+                      >
+                        <Badge variant="outline" className="gap-1 border-amber-500/40 text-amber-700 dark:text-amber-400">
+                          <CircleAlert className="h-3 w-3" />
+                          Possible duplicate
+                        </Badge>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        Possibly the same as: {p.possibleDuplicateOf?.title ?? "another posting"} @{" "}
+                        {p.possibleDuplicateOf?.organization ?? p.organization}
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  {p.applications.length === 0 ? (
+                    <Button onClick={() => approve(p.id)} disabled={approvingIds.has(p.id)}>
+                      {approvingIds.has(p.id) ? "Approving…" : "Approve to apply"}
                     </Button>
-                  )
-                )}
-              </div>
-            </div>
+                  ) : (
+                    <Badge variant="outline">In pipeline</Badge>
+                  )}
+                  {p.dismissedAt ? (
+                    <Button variant="ghost" size="sm" onClick={() => undismiss(p.id)}>
+                      Restore
+                    </Button>
+                  ) : (
+                    p.applications.length === 0 && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => dismiss(p.id)}
+                        aria-label={`Dismiss ${p.title}`}
+                        title="Not interested — dismiss"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )
+                  )}
+                </div>
+              </CardContent>
+            </Card>
           ))}
         </div>
       )}

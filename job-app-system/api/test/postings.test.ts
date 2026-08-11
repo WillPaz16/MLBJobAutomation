@@ -162,6 +162,50 @@ describe("GET /api/postings", () => {
   });
 });
 
+describe("GET /api/postings fit scoring", () => {
+  it("attaches no fitScore/matchedSkills when no CandidateProfile exists", async () => {
+    await createPosting({ title: "Data Scientist" });
+    const res = await request(app).get("/api/postings");
+    expect(res.status).toBe(200);
+    expect(res.body[0].fitScore).toBeUndefined();
+    expect(res.body[0].matchedSkills).toBeUndefined();
+  });
+
+  it("attaches fitScore/matchedSkills to every posting when a profile exists", async () => {
+    await request(app).put("/api/profile").send({ skills: "python, sql" });
+    await createPosting({ title: "Python Data Scientist", description: "Uses Python and SQL daily" });
+    const res = await request(app).get("/api/postings");
+    expect(res.status).toBe(200);
+    expect(typeof res.body[0].fitScore).toBe("number");
+    expect(res.body[0].matchedSkills).toEqual(expect.arrayContaining(["python"]));
+  });
+
+  it("sort=fit_desc orders by computed fit score, highest first, and still paginates via take/skip", async () => {
+    await request(app).put("/api/profile").send({ skills: "python, sql, r" });
+    await createPosting({ title: "No Match Role", description: "unrelated" });
+    await createPosting({ title: "Full Match Role", description: "python sql r" });
+    await createPosting({ title: "Partial Match Role", description: "python only" });
+
+    const res = await request(app).get("/api/postings?sort=fit_desc");
+    expect(res.status).toBe(200);
+    const titles = res.body.map((p: { title: string }) => p.title);
+    expect(titles).toEqual(["Full Match Role", "Partial Match Role", "No Match Role"]);
+
+    const paged = await request(app).get("/api/postings?sort=fit_desc&take=1&skip=1");
+    expect(paged.body).toHaveLength(1);
+    expect(paged.body[0].title).toBe("Partial Match Role");
+    expect(paged.headers["x-total-count"]).toBe("3");
+  });
+
+  it("sort=fit_desc with no profile falls back to a harmless no-op ordering (no error)", async () => {
+    await createPosting({ title: "A" });
+    await createPosting({ title: "B" });
+    const res = await request(app).get("/api/postings?sort=fit_desc");
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(2);
+  });
+});
+
 describe("GET /api/postings/organizations", () => {
   it("returns distinct, sorted, non-dismissed organizations", async () => {
     await createPosting({ organization: "Chicago Cubs" });

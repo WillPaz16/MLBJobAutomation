@@ -1,4 +1,12 @@
-import type { AnalyticsSummary, Application, ApplicationStage, Document, Posting } from "./types";
+import type {
+  AnalyticsSummary,
+  Application,
+  ApplicationStage,
+  CandidateProfile,
+  Document,
+  Posting,
+  ResumeBullet,
+} from "./types";
 
 const BASE = "/api";
 
@@ -42,7 +50,7 @@ export const api = {
       source?: string;
       organization?: string;
       status?: "active" | "closed" | "all";
-      sort?: "discoveredAt_desc" | "discoveredAt_asc" | "postedAt_desc" | "postedAt_asc";
+      sort?: "discoveredAt_desc" | "discoveredAt_asc" | "postedAt_desc" | "postedAt_asc" | "fit_desc";
       hideDuplicates?: boolean;
       showDismissed?: boolean;
       take?: number;
@@ -115,5 +123,21 @@ export const api = {
     list: () => request<{ id: string; summary: string; createdAt: string }[]>("/notifications"),
     generate: () =>
       request<{ id: string; summary: string; createdAt: string }>("/notifications/summary", { method: "POST" }),
+  },
+  resumeBullets: {
+    list: (params?: { category?: string; isActive?: boolean }) => {
+      const entries = Object.entries(params ?? {}).filter(([, v]) => v !== undefined) as [string, string][];
+      const q = new URLSearchParams(entries.map(([k, v]) => [k, String(v)])).toString();
+      return request<ResumeBullet[]>(`/resume-bullets${q ? `?${q}` : ""}`);
+    },
+  },
+  profile: {
+    get: () => request<CandidateProfile | null>("/profile"),
+    update: (data: {
+      skills: string;
+      preferredCategories?: string;
+      locationKeywords?: string;
+      excludeKeywords?: string;
+    }) => request<CandidateProfile>("/profile", { method: "PUT", body: JSON.stringify(data) }),
   },
 };

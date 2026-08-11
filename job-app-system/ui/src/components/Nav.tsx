@@ -15,6 +15,7 @@ const links = [
   { to: "/prep", label: "Prep" },
   { to: "/documents", label: "Documents" },
   { to: "/analytics", label: "Analytics" },
+  { to: "/compatibility", label: "Compatibility" },
 ];
 
 function linkClass({ isActive }: { isActive: boolean }) {

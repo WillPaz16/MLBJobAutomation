@@ -41,6 +41,9 @@ export interface Posting {
   duplicateRejected: boolean;
   dismissedAt: string | null;
   applications: Application[];
+  // Present only when a CandidateProfile exists — see api/src/fitScore.ts.
+  fitScore?: number | null;
+  matchedSkills?: string[] | null;
 }
 
 export interface Document {
@@ -66,6 +69,23 @@ export interface Application {
   appliedAt: string | null;
   updatedAt: string;
   createdAt: string;
+}
+
+export interface ResumeBullet {
+  id: string;
+  category: string;
+  text: string;
+  tags: string | null;
+  isActive: boolean;
+}
+
+export interface CandidateProfile {
+  id: string;
+  skills: string;
+  preferredCategories: string | null;
+  locationKeywords: string | null;
+  excludeKeywords: string | null;
+  updatedAt: string;
 }
 
 export interface AnalyticsSummary {

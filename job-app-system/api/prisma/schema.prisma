@@ -124,3 +124,15 @@ model NotificationLog {
   summary   String
   createdAt DateTime @default(now())
 }
+
+// Singleton candidate profile used for deterministic fit scoring against postings
+// (api/src/fitScore.ts). The fixed-literal @default("profile") on id makes "singleton"
+// a property of the primary key rather than app-level enforcement.
+model CandidateProfile {
+  id                  String   @id @default("profile")
+  skills              String   // comma-separated keywords, the main match input
+  preferredCategories String?  // comma-separated PostingCategory values
+  locationKeywords    String?  // comma-separated, small location boost
+  excludeKeywords     String?  // comma-separated, dealbreaker penalty
+  updatedAt           DateTime @updatedAt
+}

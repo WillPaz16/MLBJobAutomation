@@ -85,3 +85,36 @@ describe("api client", () => {
     expect(result).toBeUndefined();
   });
 });
+
+describe("api.profile", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", mockFetch({ ok: true, jsonBody: null }));
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("get() returns null when no profile has been created", async () => {
+    const result = await api.profile.get();
+    expect(result).toBeNull();
+  });
+
+  it("update() PUTs the profile body and returns the parsed response", async () => {
+    const fetchMock = mockFetch({ ok: true, jsonBody: { id: "profile", skills: "python" } });
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await api.profile.update({ skills: "python" });
+    expect(result).toEqual({ id: "profile", skills: "python" });
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toContain("/profile");
+    expect(options.method).toBe("PUT");
+  });
+});
+
+describe("api.resumeBullets", () => {
+  it("list() returns the parsed bullet array", async () => {
+    vi.stubGlobal("fetch", mockFetch({ ok: true, jsonBody: [{ id: "1", tags: "python,sql" }] }));
+    const result = await api.resumeBullets.list();
+    expect(result).toEqual([{ id: "1", tags: "python,sql" }]);
+  });
+});
