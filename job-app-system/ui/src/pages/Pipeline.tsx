@@ -15,6 +15,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { AlertTriangle, ExternalLink, FileText, GripVertical, MapPin } from "lucide-react";
 import { api } from "../api/client";
 import type { Application, ApplicationStage, Document, PostingCategory } from "../api/types";
+import { htmlToPlainText } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -638,7 +639,9 @@ export function Pipeline() {
           <div>
             <label className="text-xs font-medium text-muted-foreground">Job description</label>
             <div className="mt-1 max-h-64 overflow-y-auto whitespace-pre-wrap rounded-md border bg-muted/30 p-2 text-sm text-foreground">
-              {detailApplication?.posting?.description || "No description was captured for this posting."}
+              {detailApplication?.posting?.description
+                ? htmlToPlainText(detailApplication.posting.description)
+                : "No description was captured for this posting."}
             </div>
             {detailApplication?.posting?.url && (
               <a

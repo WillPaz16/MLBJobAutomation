@@ -3,6 +3,7 @@ import { AlertTriangle, CircleAlert, ExternalLink, X } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../api/client";
 import type { Posting, PostingCategory } from "../api/types";
+import { htmlToPlainText } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -590,7 +591,9 @@ export function Discovery() {
             </div>
           )}
           <div className="max-h-96 overflow-y-auto whitespace-pre-wrap text-sm text-foreground">
-            {detailPosting?.description || "No description was captured for this posting."}
+            {detailPosting?.description
+              ? htmlToPlainText(detailPosting.description)
+              : "No description was captured for this posting."}
           </div>
           {detailPosting && (
             <a
