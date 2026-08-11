@@ -1,12 +1,16 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, CircleAlert, ExternalLink, X } from "lucide-react";
+import { AlertTriangle, CircleAlert, ExternalLink, Info, Search, SlidersHorizontal, X } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../api/client";
-import type { Posting, PostingCategory } from "../api/types";
-import { htmlToPlainText } from "@/lib/utils";
-import { CATEGORY_LABELS } from "@/lib/labels";
+import type { Application, Posting, PostingCategory } from "../api/types";
+import { htmlToPlainText, snippet } from "@/lib/utils";
+import { CATEGORY_FILTER_OPTIONS, CATEGORY_LABELS } from "@/lib/labels";
+import { useFilterParams } from "@/hooks/useFilterParams";
 import { Pagination } from "@/components/Pagination";
+import { ErrorState } from "@/components/states/ErrorState";
+import { EmptyState } from "@/components/states/EmptyState";
 import { NotificationBanner } from "@/components/NotificationBanner";
+import { PageLayout, PageHeader } from "@/components/PageLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -16,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Dialog,
   DialogContent,
@@ -25,15 +30,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-
-const CATEGORIES: { value: PostingCategory | "all"; label: string }[] = [
-  { value: "all", label: "All categories" },
-  { value: "BASEBALL_OPS", label: "Baseball Ops" },
-  { value: "BASEBALL_ANALYTICS", label: "Baseball Analytics" },
-  { value: "BASEBALL_RND", label: "Baseball R&D" },
-  { value: "DATA_SCIENCE", label: "Data Science" },
-  { value: "OTHER", label: "Other" },
-];
 
 const STATUSES: { value: "active" | "closed" | "all"; label: string }[] = [
   { value: "active", label: "Active only" },
@@ -51,17 +47,38 @@ const SORTS: { value: SortOption; label: string }[] = [
   { value: "fit_desc", label: "Best fit first" },
 ];
 
-// Fit badge tiering — reuses the existing amber-badge convention (closed/possible-duplicate)
-// for the middle tier rather than inventing a new palette.
-function fitBadgeClassName(score: number): string {
-  if (score >= 70) {
-    return "gap-1 border-green-500/40 text-green-700 dark:text-green-400";
-  }
-  if (score >= 40) {
-    return "gap-1 border-amber-500/40 text-amber-700 dark:text-amber-400";
-  }
+// Tier-based styling replaces the old numeric-threshold badge coloring now that the API returns
+// `fitTier` (Phase 2) — Strong/Good map to the same green/amber classes the app already used,
+// Fair/Weak fall back to muted rather than inventing a third color.
+function fitBadgeClassName(tier: string | null | undefined): string {
+  if (tier === "Strong") return "gap-1 border-green-500/40 text-green-700 dark:text-green-400";
+  if (tier === "Good") return "gap-1 border-amber-500/40 text-amber-700 dark:text-amber-400";
   return "gap-1 text-muted-foreground";
 }
+
+const FILTER_DEFAULTS: Record<string, string> = {
+  category: "all",
+  location: "",
+  search: "",
+  organization: "all",
+  status: "active",
+  sort: "discoveredAt_desc",
+  hideDuplicates: "true",
+  showDismissed: "false",
+  pageSize: "25",
+};
+
+const FILTER_CHIP_LABELS: Record<string, (value: string) => string> = {
+  category: (v) => `Category: ${CATEGORY_LABELS[v as PostingCategory] ?? v}`,
+  location: (v) => `Location: ${v}`,
+  search: (v) => `Search: ${v}`,
+  organization: (v) => `Team/Company: ${v}`,
+  status: (v) => `Status: ${STATUSES.find((s) => s.value === v)?.label ?? v}`,
+  sort: (v) => `Sort: ${SORTS.find((s) => s.value === v)?.label ?? v}`,
+  hideDuplicates: () => "Hide flagged duplicates: off",
+  showDismissed: () => "Show dismissed: on",
+  pageSize: (v) => `Rows per page: ${v}`,
+};
 
 function useDebounced<T>(value: T, delayMs: number): T {
   const [debounced, setDebounced] = useState(value);
@@ -72,25 +89,45 @@ function useDebounced<T>(value: T, delayMs: number): T {
   return debounced;
 }
 
+// Bounded-concurrency batch runner — used by bulk approve so a 20-item selection doesn't open 20
+// simultaneous sockets against the local Express+SQLite API.
+async function runInBatches<T, R>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T) => Promise<R>,
+  onProgress: (done: number) => void
+): Promise<{ item: T; result?: R; error?: unknown }[]> {
+  const results: { item: T; result?: R; error?: unknown }[] = [];
+  let done = 0;
+  for (let i = 0; i < items.length; i += concurrency) {
+    const batch = items.slice(i, i + concurrency);
+    const settled = await Promise.allSettled(batch.map((item) => fn(item)));
+    settled.forEach((outcome, idx) => {
+      const item = batch[idx];
+      if (outcome.status === "fulfilled") {
+        results.push({ item, result: outcome.value });
+      } else {
+        results.push({ item, error: outcome.reason });
+      }
+      done++;
+      onProgress(done);
+    });
+  }
+  return results;
+}
+
 export function Discovery() {
+  const { filters, setFilter, page, setPage, activeFilters, clearFilters } = useFilterParams(FILTER_DEFAULTS);
+
   const [postings, setPostings] = useState<Posting[]>([]);
-  const [category, setCategory] = useState("all");
-  const [location, setLocation] = useState("");
-  const [search, setSearch] = useState("");
-  const [organization, setOrganization] = useState("all");
   const [organizations, setOrganizations] = useState<string[]>([]);
-  const [status, setStatus] = useState<"active" | "closed" | "all">("active");
-  const [sort, setSort] = useState<SortOption>("discoveredAt_desc");
-  const [hideDuplicates, setHideDuplicates] = useState(true);
-  const [showDismissed, setShowDismissed] = useState(false);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(25);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [approvingIds, setApprovingIds] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkApproving, setBulkApproving] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
   const [detailPosting, setDetailPosting] = useState<Posting | null>(null);
   const [manualOpen, setManualOpen] = useState(false);
   const [manualForm, setManualForm] = useState({
@@ -102,22 +139,39 @@ export function Discovery() {
   });
   const [savingManual, setSavingManual] = useState(false);
 
-  const debouncedLocation = useDebounced(location, 300);
-  const debouncedSearch = useDebounced(search, 300);
+  // Local input state gives immediate typing feedback; the debounced value is what actually gets
+  // written into the URL (via setFilter's `replace: true` below), so typing doesn't spam browser
+  // history with one entry per keystroke.
+  const [locationInput, setLocationInput] = useState(filters.location);
+  const [searchInput, setSearchInput] = useState(filters.search);
+  const debouncedLocation = useDebounced(locationInput, 300);
+  const debouncedSearch = useDebounced(searchInput, 300);
+
+  const pageSize = Number(filters.pageSize) || 25;
+
+  useEffect(() => {
+    setFilter("location", debouncedLocation, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedLocation]);
+
+  useEffect(() => {
+    setFilter("search", debouncedSearch, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch]);
 
   async function load() {
     setLoading(true);
     setError(null);
     try {
       const { postings: data, total: newTotal } = await api.postings.list({
-        category: category === "all" ? undefined : category,
-        location: debouncedLocation || undefined,
-        q: debouncedSearch || undefined,
-        organization: organization === "all" ? undefined : organization,
-        status,
-        sort,
-        hideDuplicates,
-        showDismissed,
+        category: filters.category === "all" ? undefined : filters.category,
+        location: filters.location || undefined,
+        q: filters.search || undefined,
+        organization: filters.organization === "all" ? undefined : filters.organization,
+        status: filters.status as "active" | "closed" | "all",
+        sort: filters.sort as SortOption,
+        hideDuplicates: filters.hideDuplicates === "true",
+        showDismissed: filters.showDismissed === "true",
         take: pageSize,
         skip: (page - 1) * pageSize,
       });
@@ -130,17 +184,16 @@ export function Discovery() {
     }
   }
 
-  // Any filter (or page size) change invalidates the current page — reset before the fetch effect
-  // below re-runs, so a filter change never leaves the user stranded on an out-of-range page.
-  useEffect(() => {
-    setPage(1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [category, debouncedLocation, debouncedSearch, organization, status, sort, hideDuplicates, showDismissed, pageSize]);
-
+  // The single fetch effect — collapsed from two effects (one resetting page, one fetching) on a
+  // shared 9-item dependency list with react-hooks/exhaustive-deps suppressed. Because setFilter
+  // resets page to 1 in the same setSearchParams call that changes a filter, every filter or page
+  // change is exactly one URL mutation, so keying off the URL's own string form fires exactly one
+  // load() per change — no lint suppression needed.
+  const searchKey = new URLSearchParams({ ...filters, page: String(page) }).toString();
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [category, debouncedLocation, debouncedSearch, organization, status, sort, hideDuplicates, showDismissed, page, pageSize]);
+  }, [searchKey]);
 
   useEffect(() => {
     api.postings
@@ -154,8 +207,21 @@ export function Discovery() {
   async function approve(id: string) {
     setApprovingIds((prev) => new Set(prev).add(id));
     try {
-      await api.postings.approve(id);
-      toast.success("Application added to pipeline");
+      const application: Application = await api.postings.approve(id);
+      toast.success("Application added to pipeline", {
+        action: {
+          label: "Undo",
+          onClick: async () => {
+            try {
+              await api.applications.remove(application.id);
+              toast.success("Undone");
+              await load();
+            } catch (err) {
+              toast.error(err instanceof Error ? err.message : "Failed to undo");
+            }
+          },
+        },
+      });
       await load();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to approve posting");
@@ -168,26 +234,32 @@ export function Discovery() {
     }
   }
 
-  async function approveSelected() {
+  async function approveIds(ids: string[]) {
     setBulkApproving(true);
-    const ids = Array.from(selected);
-    let succeeded = 0;
-    for (const id of ids) {
-      try {
-        await api.postings.approve(id);
-        succeeded++;
-      } catch {
-        // continue with the rest; report a partial-success summary below
-      }
-    }
+    setBulkProgress({ done: 0, total: ids.length });
+    const results = await runInBatches(
+      ids,
+      5,
+      (id) => api.postings.approve(id),
+      (done) => setBulkProgress({ done, total: ids.length })
+    );
     setBulkApproving(false);
+    setBulkProgress(null);
     setSelected(new Set());
-    if (succeeded === ids.length) {
+    const failed = results.filter((r) => r.error).map((r) => r.item);
+    const succeeded = ids.length - failed.length;
+    if (failed.length === 0) {
       toast.success(`Approved ${succeeded} posting(s)`);
     } else {
-      toast.warning(`Approved ${succeeded} of ${ids.length} posting(s) — some failed`);
+      toast.warning(`Approved ${succeeded} of ${ids.length} — ${failed.length} failed`, {
+        action: { label: "Retry failed", onClick: () => approveIds(failed) },
+      });
     }
     await load();
+  }
+
+  async function approveSelected() {
+    await approveIds(Array.from(selected));
   }
 
   async function createManualPosting() {
@@ -257,18 +329,112 @@ export function Discovery() {
     });
   }
 
+  const selectableIds = postings.filter((p) => p.applications.length === 0).map((p) => p.id);
+  const allSelected = selectableIds.length > 0 && selectableIds.every((id) => selected.has(id));
+  const someSelected = selectableIds.some((id) => selected.has(id));
+
+  function toggleSelectAll() {
+    setSelected((prev) => {
+      if (allSelected) {
+        const next = new Set(prev);
+        selectableIds.forEach((id) => next.delete(id));
+        return next;
+      }
+      return new Set([...prev, ...selectableIds]);
+    });
+  }
+
   return (
-    <div className="p-6">
+    <PageLayout>
       <NotificationBanner />
-      <div className="mb-4 flex flex-wrap items-end gap-3">
+      <PageHeader
+        title="Discovery"
+        description="Browse and triage newly found postings."
+        count={{ value: total, noun: "postings" }}
+        actions={
+          <Dialog open={manualOpen} onOpenChange={setManualOpen}>
+            <DialogTrigger render={<Button variant="outline" size="sm" />}>Add posting manually</DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add posting manually</DialogTitle>
+                <DialogDescription>
+                  For orgs with no scrapable source (e.g. Teamwork-Online-only teams) — check
+                  manually, then paste what you find here.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3">
+                <div>
+                  <Label className="mb-1">Title</Label>
+                  <Input
+                    value={manualForm.title}
+                    onChange={(e) => setManualForm((f) => ({ ...f, title: e.target.value }))}
+                    placeholder="e.g. Baseball Operations Fellow"
+                  />
+                </div>
+                <div>
+                  <Label className="mb-1">Organization</Label>
+                  <Input
+                    value={manualForm.organization}
+                    onChange={(e) => setManualForm((f) => ({ ...f, organization: e.target.value }))}
+                    placeholder="e.g. New York Yankees"
+                  />
+                </div>
+                <div>
+                  <Label className="mb-1">Location</Label>
+                  <Input
+                    value={manualForm.location}
+                    onChange={(e) => setManualForm((f) => ({ ...f, location: e.target.value }))}
+                    placeholder="e.g. Bronx, NY"
+                  />
+                </div>
+                <div>
+                  <Label className="mb-1">URL</Label>
+                  <Input
+                    value={manualForm.url}
+                    onChange={(e) => setManualForm((f) => ({ ...f, url: e.target.value }))}
+                    placeholder="https://..."
+                  />
+                </div>
+                <div>
+                  <Label className="mb-1">Category</Label>
+                  <Select
+                    value={manualForm.category}
+                    onValueChange={(v) => setManualForm((f) => ({ ...f, category: (v as PostingCategory) ?? "OTHER" }))}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CATEGORY_FILTER_OPTIONS.filter((c) => c.value !== "all").map((c) => (
+                        <SelectItem key={c.value} value={c.value}>
+                          {c.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button onClick={createManualPosting} disabled={savingManual}>
+                  {savingManual ? "Adding…" : "Add posting"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        }
+      />
+
+      <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div>
-          <label className="mb-1 block text-xs font-medium text-muted-foreground">Category</label>
-          <Select value={category} onValueChange={(v) => setCategory(v ?? "all")}>
-            <SelectTrigger className="w-48">
+          <Label htmlFor="filter-category" className="mb-1">
+            Category
+          </Label>
+          <Select value={filters.category} onValueChange={(v) => setFilter("category", v ?? "all")}>
+            <SelectTrigger id="filter-category" className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {CATEGORIES.map((c) => (
+              {CATEGORY_FILTER_OPTIONS.map((c) => (
                 <SelectItem key={c.value} value={c.value}>
                   {c.label}
                 </SelectItem>
@@ -277,27 +443,35 @@ export function Discovery() {
           </Select>
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-muted-foreground">Location contains</label>
+          <Label htmlFor="filter-location" className="mb-1">
+            Location contains
+          </Label>
           <Input
-            className="w-48"
+            id="filter-location"
+            className="w-full"
             placeholder="e.g. Chicago, Remote"
-            value={location}
-            onChange={(e) => setLocation(e.target.value)}
+            value={locationInput}
+            onChange={(e) => setLocationInput(e.target.value)}
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-muted-foreground">Search title/org</label>
+          <Label htmlFor="filter-search" className="mb-1">
+            Search title/org
+          </Label>
           <Input
-            className="w-56"
+            id="filter-search"
+            className="w-full"
             placeholder="e.g. analytics, Cubs"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-muted-foreground">Team / Company</label>
-          <Select value={organization} onValueChange={(v) => setOrganization(v ?? "all")}>
-            <SelectTrigger className="w-52">
+          <Label htmlFor="filter-organization" className="mb-1">
+            Team / Company
+          </Label>
+          <Select value={filters.organization} onValueChange={(v) => setFilter("organization", v ?? "all")}>
+            <SelectTrigger id="filter-organization" className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -311,9 +485,11 @@ export function Discovery() {
           </Select>
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-muted-foreground">Status</label>
-          <Select value={status} onValueChange={(v) => setStatus((v as typeof status) ?? "active")}>
-            <SelectTrigger className="w-36">
+          <Label htmlFor="filter-status" className="mb-1">
+            Status
+          </Label>
+          <Select value={filters.status} onValueChange={(v) => setFilter("status", v ?? "active")}>
+            <SelectTrigger id="filter-status" className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -326,9 +502,11 @@ export function Discovery() {
           </Select>
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-muted-foreground">Sort</label>
-          <Select value={sort} onValueChange={(v) => setSort((v as typeof sort) ?? "discoveredAt_desc")}>
-            <SelectTrigger className="w-44">
+          <Label htmlFor="filter-sort" className="mb-1">
+            Sort
+          </Label>
+          <Select value={filters.sort} onValueChange={(v) => setFilter("sort", v ?? "discoveredAt_desc")}>
+            <SelectTrigger id="filter-sort" className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -340,107 +518,91 @@ export function Discovery() {
             </SelectContent>
           </Select>
         </div>
-        <div className="flex items-center gap-1.5 pb-2">
-          <Checkbox
-            id="hide-duplicates"
-            checked={hideDuplicates}
-            onCheckedChange={(checked) => setHideDuplicates(checked === true)}
-          />
-          <label htmlFor="hide-duplicates" className="text-xs font-medium text-muted-foreground">
-            Hide flagged duplicates
-          </label>
+        <div className="flex items-end">
+          <Popover>
+            <PopoverTrigger render={<Button variant="outline" size="sm" />}>
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+              Options
+            </PopoverTrigger>
+            <PopoverContent>
+              <div className="flex items-center gap-1.5">
+                <Checkbox
+                  id="hide-duplicates"
+                  checked={filters.hideDuplicates === "true"}
+                  onCheckedChange={(checked) => setFilter("hideDuplicates", checked === true ? "true" : "false")}
+                />
+                <Label htmlFor="hide-duplicates" className="text-xs font-medium text-muted-foreground">
+                  Hide flagged duplicates
+                </Label>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Checkbox
+                  id="show-dismissed"
+                  checked={filters.showDismissed === "true"}
+                  onCheckedChange={(checked) => setFilter("showDismissed", checked === true ? "true" : "false")}
+                />
+                <Label htmlFor="show-dismissed" className="text-xs font-medium text-muted-foreground">
+                  Show dismissed
+                </Label>
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
-        <div className="flex items-center gap-1.5 pb-2">
-          <Checkbox
-            id="show-dismissed"
-            checked={showDismissed}
-            onCheckedChange={(checked) => setShowDismissed(checked === true)}
-          />
-          <label htmlFor="show-dismissed" className="text-xs font-medium text-muted-foreground">
-            Show dismissed
-          </label>
-        </div>
-        <span className="ml-auto text-sm text-muted-foreground">
-          {total === 0
-            ? "0 matching"
-            : `Showing ${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, total)} of ${total}`}
-        </span>
-        <Dialog open={manualOpen} onOpenChange={setManualOpen}>
-          <DialogTrigger render={<Button variant="outline" size="sm" />}>Add posting manually</DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add posting manually</DialogTitle>
-              <DialogDescription>
-                For orgs with no scrapable source (e.g. Teamwork-Online-only teams) — check
-                manually, then paste what you find here.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-3">
-              <div>
-                <Label className="mb-1">Title</Label>
-                <Input
-                  value={manualForm.title}
-                  onChange={(e) => setManualForm((f) => ({ ...f, title: e.target.value }))}
-                  placeholder="e.g. Baseball Operations Fellow"
-                />
-              </div>
-              <div>
-                <Label className="mb-1">Organization</Label>
-                <Input
-                  value={manualForm.organization}
-                  onChange={(e) => setManualForm((f) => ({ ...f, organization: e.target.value }))}
-                  placeholder="e.g. New York Yankees"
-                />
-              </div>
-              <div>
-                <Label className="mb-1">Location</Label>
-                <Input
-                  value={manualForm.location}
-                  onChange={(e) => setManualForm((f) => ({ ...f, location: e.target.value }))}
-                  placeholder="e.g. Bronx, NY"
-                />
-              </div>
-              <div>
-                <Label className="mb-1">URL</Label>
-                <Input
-                  value={manualForm.url}
-                  onChange={(e) => setManualForm((f) => ({ ...f, url: e.target.value }))}
-                  placeholder="https://..."
-                />
-              </div>
-              <div>
-                <Label className="mb-1">Category</Label>
-                <Select
-                  value={manualForm.category}
-                  onValueChange={(v) => setManualForm((f) => ({ ...f, category: (v as PostingCategory) ?? "OTHER" }))}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {CATEGORIES.filter((c) => c.value !== "all").map((c) => (
-                      <SelectItem key={c.value} value={c.value}>
-                        {c.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button onClick={createManualPosting} disabled={savingManual}>
-                {savingManual ? "Adding…" : "Add posting"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
       </div>
 
+      {activeFilters.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-1.5">
+          {activeFilters.map(({ key, value }) => (
+            <Badge key={key} variant="secondary" className="gap-1 pr-1">
+              {FILTER_CHIP_LABELS[key]?.(value) ?? `${key}: ${value}`}
+              <button
+                type="button"
+                onClick={() => {
+                  setLocationInput((prev) => (key === "location" ? "" : prev));
+                  setSearchInput((prev) => (key === "search" ? "" : prev));
+                  setFilter(key, FILTER_DEFAULTS[key as keyof typeof FILTER_DEFAULTS]);
+                }}
+                aria-label={`Clear ${key} filter`}
+                className="inline-flex rounded-full hover:bg-muted-foreground/20"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          ))}
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              setLocationInput("");
+              setSearchInput("");
+              clearFilters();
+            }}
+          >
+            Clear all
+          </Button>
+        </div>
+      )}
+
+      {postings.length > 0 && (
+        <div className="mb-3 flex items-center gap-2">
+          <Checkbox
+            checked={allSelected}
+            indeterminate={someSelected && !allSelected}
+            onCheckedChange={toggleSelectAll}
+            disabled={selectableIds.length === 0}
+            aria-label="Select all visible postings"
+          />
+          <span className="text-sm text-muted-foreground">Select all visible</span>
+        </div>
+      )}
+
       {selected.size > 0 && (
-        <div className="mb-4 flex items-center gap-3 rounded-md border bg-accent/40 px-3 py-2">
+        <div className="mb-4 flex items-center gap-3 rounded-md border bg-muted/40 px-3 py-2">
           <span className="text-sm">{selected.size} selected</span>
           <Button size="sm" onClick={approveSelected} disabled={bulkApproving}>
-            {bulkApproving ? "Approving…" : "Approve selected"}
+            {bulkApproving && bulkProgress
+              ? `Approving ${bulkProgress.done}/${bulkProgress.total}…`
+              : "Approve selected"}
           </Button>
           <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
             Clear
@@ -455,133 +617,175 @@ export function Discovery() {
           ))}
         </div>
       ) : error ? (
-        <div className="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
-          Failed to load postings: {error}{" "}
-          <button className="underline" onClick={load}>
-            Retry
-          </button>
-        </div>
+        <ErrorState title="Failed to load postings" error={error} onRetry={load} />
       ) : postings.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          No postings yet. Run the discovery scraper (<code>npm run run-discovery</code> in{" "}
-          <code>scrapers/</code>) to populate this feed.
-        </p>
+        activeFilters.length === 0 ? (
+          <EmptyState
+            icon={Search}
+            title="No postings yet"
+            description="Run the discovery scraper (npm run run-discovery in scrapers/) to populate this feed."
+            variant="empty"
+          />
+        ) : (
+          <EmptyState
+            icon={Search}
+            title="No postings match your filters"
+            description="Try loosening a filter or clear them all to see the full feed."
+            action={
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setLocationInput("");
+                  setSearchInput("");
+                  clearFilters();
+                }}
+              >
+                Clear all filters
+              </Button>
+            }
+            variant="no-matches"
+          />
+        )
       ) : (
         <div className="grid gap-3">
-          {postings.map((p) => (
-            <Card key={p.id}>
-              <CardHeader>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-3">
-                    {p.applications.length === 0 && (
-                      <Checkbox
-                        checked={selected.has(p.id)}
-                        onCheckedChange={() => toggleSelected(p.id)}
-                        className="mt-1"
-                        aria-label={`Select ${p.title}`}
-                      />
-                    )}
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          className="text-left font-medium text-foreground hover:underline"
-                          onClick={() => setDetailPosting(p)}
-                        >
-                          {p.title}
-                        </button>
-                        <a
-                          href={p.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center text-muted-foreground hover:text-primary"
-                          aria-label={`Open original posting for ${p.title}`}
-                          title="Open original posting"
-                        >
-                          <ExternalLink className="h-3.5 w-3.5" />
-                        </a>
-                      </div>
-                      <div className="text-sm text-muted-foreground">
-                        {p.organization} · {p.location ?? "location unknown"}
+          {postings.map((p) => {
+            const overflowSkills = (p.matchedSkills ?? []).slice(4);
+            return (
+              <Card key={p.id}>
+                <CardHeader>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      {p.applications.length === 0 && (
+                        <Checkbox
+                          checked={selected.has(p.id)}
+                          onCheckedChange={() => toggleSelected(p.id)}
+                          className="mt-1"
+                          aria-label={`Select ${p.title}`}
+                        />
+                      )}
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            className="text-left font-medium text-foreground hover:underline"
+                            onClick={() => setDetailPosting(p)}
+                          >
+                            {p.title}
+                          </button>
+                          <a
+                            href={p.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center text-muted-foreground hover:text-primary"
+                            aria-label={`Open original posting for ${p.title}`}
+                            title="Open original posting"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                          </a>
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          {p.organization} · {p.location ?? "location unknown"}
+                        </div>
+                        {p.description && (
+                          <p className="mt-1 line-clamp-2 max-w-2xl text-sm text-muted-foreground">
+                            {snippet(p.description, 200)}
+                          </p>
+                        )}
                       </div>
                     </div>
                   </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="mb-3 flex flex-wrap items-center gap-1.5">
-                  <Badge variant="secondary">{CATEGORY_LABELS[p.category]}</Badge>
-                  {p.fitScore != null && (
-                    <Tooltip>
-                      <TooltipTrigger render={<span className="inline-flex" />}>
-                        <Badge variant="outline" className={fitBadgeClassName(p.fitScore)}>
-                          {p.fitScore}% fit
-                        </Badge>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        {p.matchedSkills && p.matchedSkills.length > 0
-                          ? `Matched skills: ${p.matchedSkills.join(", ")}`
-                          : "No skills matched your compatibility profile"}
-                      </TooltipContent>
-                    </Tooltip>
-                  )}
-                  {p.dismissedAt && <Badge variant="outline">Dismissed</Badge>}
-                  {p.closedAt && (
-                    <Badge variant="outline" className="gap-1 border-amber-500/40 text-amber-700 dark:text-amber-400">
-                      <AlertTriangle className="h-3 w-3" />
-                      Closed
-                    </Badge>
-                  )}
-                  {p.possibleDuplicateOfId && !p.duplicateRejected && (
-                    <Tooltip>
-                      <TooltipTrigger
-                        render={
-                          <button
-                            onClick={() => setDetailPosting(p.possibleDuplicateOf ?? p)}
-                            className="inline-flex"
-                          />
-                        }
-                      >
-                        <Badge variant="outline" className="gap-1 border-amber-500/40 text-amber-700 dark:text-amber-400">
-                          <CircleAlert className="h-3 w-3" />
-                          Possible duplicate
-                        </Badge>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        Possibly the same as: {p.possibleDuplicateOf?.title ?? "another posting"} @{" "}
-                        {p.possibleDuplicateOf?.organization ?? p.organization}
-                      </TooltipContent>
-                    </Tooltip>
-                  )}
-                </div>
-                <div className="flex items-center gap-2">
-                  {p.applications.length === 0 ? (
-                    <Button onClick={() => approve(p.id)} disabled={approvingIds.has(p.id)}>
-                      {approvingIds.has(p.id) ? "Approving…" : "Approve to apply"}
-                    </Button>
-                  ) : (
-                    <Badge variant="outline">In pipeline</Badge>
-                  )}
-                  {p.dismissedAt ? (
-                    <Button variant="ghost" size="sm" onClick={() => undismiss(p.id)}>
-                      Restore
-                    </Button>
-                  ) : (
-                    p.applications.length === 0 && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => dismiss(p.id)}
-                        aria-label={`Dismiss ${p.title}`}
-                        title="Not interested — dismiss"
-                      >
-                        <X className="h-4 w-4" />
+                </CardHeader>
+                <CardContent>
+                  <div className="mb-3 flex flex-wrap items-center gap-1.5">
+                    <Badge variant="secondary">{CATEGORY_LABELS[p.category]}</Badge>
+                    {p.fitScore != null && (
+                      <Tooltip>
+                        <TooltipTrigger render={<button type="button" />}>
+                          <Badge variant="outline" className={fitBadgeClassName(p.fitTier)}>
+                            {p.fitTier ? `${p.fitTier} fit · ` : ""}
+                            {p.fitScore}%
+                          </Badge>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          {p.reasons && p.reasons.length > 0
+                            ? p.reasons
+                                .map((r) => `${r.label} (${r.points >= 0 ? "+" : ""}${r.points})`)
+                                .join(" · ")
+                            : p.matchedSkills && p.matchedSkills.length > 0
+                              ? `Matched skills: ${p.matchedSkills.join(", ")}`
+                              : "No skills matched your compatibility profile"}
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                    {(p.matchedSkills ?? []).slice(0, 4).map((skill) => (
+                      <Badge key={skill} variant="outline" className="text-xs font-normal">
+                        {skill}
+                      </Badge>
+                    ))}
+                    {overflowSkills.length > 0 && (
+                      <Badge variant="outline" className="text-xs font-normal">
+                        +{overflowSkills.length}
+                      </Badge>
+                    )}
+                    {p.dismissedAt && <Badge variant="outline">Dismissed</Badge>}
+                    {p.closedAt && (
+                      <Badge variant="outline" className="gap-1 border-amber-500/40 text-amber-700 dark:text-amber-400">
+                        <AlertTriangle className="h-3 w-3" />
+                        Closed
+                      </Badge>
+                    )}
+                    {p.possibleDuplicateOfId && !p.duplicateRejected && (
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={
+                            <button
+                              onClick={() => setDetailPosting(p.possibleDuplicateOf ?? p)}
+                              className="inline-flex"
+                            />
+                          }
+                        >
+                          <Badge variant="outline" className="gap-1 border-amber-500/40 text-amber-700 dark:text-amber-400">
+                            <CircleAlert className="h-3 w-3" />
+                            Possible duplicate
+                          </Badge>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          Possibly the same as: {p.possibleDuplicateOf?.title ?? "another posting"} @{" "}
+                          {p.possibleDuplicateOf?.organization ?? p.organization}
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {p.applications.length === 0 ? (
+                      <Button onClick={() => approve(p.id)} disabled={approvingIds.has(p.id)}>
+                        {approvingIds.has(p.id) ? "Approving…" : "Approve to apply"}
                       </Button>
-                    )
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                    ) : (
+                      <Badge variant="outline">In pipeline</Badge>
+                    )}
+                    {p.dismissedAt ? (
+                      <Button variant="ghost" size="sm" onClick={() => undismiss(p.id)}>
+                        Restore
+                      </Button>
+                    ) : (
+                      p.applications.length === 0 && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => dismiss(p.id)}
+                          aria-label={`Dismiss ${p.title}`}
+                          title="Not interested — dismiss"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      )
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
 
@@ -591,7 +795,7 @@ export function Discovery() {
           totalPages={Math.ceil(total / pageSize)}
           onPageChange={setPage}
           pageSize={pageSize}
-          onPageSizeChange={setPageSize}
+          onPageSizeChange={(size) => setFilter("pageSize", String(size))}
         />
       )}
 
@@ -620,6 +824,21 @@ export function Discovery() {
               </Button>
             </div>
           )}
+          {detailPosting?.reasons && detailPosting.reasons.length > 0 && (
+            <div className="rounded-md border bg-muted/30 p-2.5 text-sm">
+              <div className="mb-1 flex items-center gap-1.5 font-medium text-foreground">
+                <Info className="h-3.5 w-3.5" />
+                Why this fit score
+              </div>
+              <ul className="space-y-0.5 text-muted-foreground">
+                {detailPosting.reasons.map((r, i) => (
+                  <li key={i}>
+                    {r.label} <span className="tabular-nums">{r.points >= 0 ? "+" : ""}{r.points}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <div className="max-h-96 overflow-y-auto whitespace-pre-wrap text-sm text-foreground">
             {detailPosting?.description
               ? htmlToPlainText(detailPosting.description)
@@ -637,6 +856,6 @@ export function Discovery() {
           )}
         </DialogContent>
       </Dialog>
-    </div>
+    </PageLayout>
   );
 }

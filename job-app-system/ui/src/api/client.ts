@@ -1,5 +1,6 @@
 import type {
   AnalyticsSummary,
+  AnalyticsTimeseries,
   Application,
   ApplicationStage,
   CandidateProfile,
@@ -118,6 +119,7 @@ export const api = {
   },
   analytics: {
     summary: () => request<AnalyticsSummary>("/analytics/summary"),
+    timeseries: () => request<AnalyticsTimeseries>("/analytics/timeseries"),
   },
   notifications: {
     list: () => request<{ id: string; summary: string; createdAt: string }[]>("/notifications"),
@@ -135,6 +137,7 @@ export const api = {
     get: () => request<CandidateProfile | null>("/profile"),
     update: (data: {
       skills: string;
+      coreSkills?: string;
       preferredCategories?: string;
       locationKeywords?: string;
       excludeKeywords?: string;

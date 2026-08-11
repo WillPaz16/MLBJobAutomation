@@ -10,8 +10,14 @@ export function cn(...inputs: ClassValue[]) {
 // literal tags and entities (&amp;, &nbsp;) visible. DOMParser here is safe against XSS: the
 // parsed document is never attached to the live DOM and script tags inside it never execute —
 // only .textContent is read out of it, which strips all markup and decodes entities correctly.
-export function htmlToPlainText(html: string): string {
-  if (!html) return "";
+//
+// Greenhouse's own `?content=true` API is double-encoded: the `content` field's value is itself
+// HTML-entity-escaped (its literal characters are "&lt;p&gt;...", not "<p>...") — confirmed live
+// against the real API. A single decode pass only unwraps those entities, leaving the
+// now-literal "<p>" tag characters visible as plain text. `stripOnce` is idempotent on real
+// (non-double-encoded) HTML — once tags are gone there's nothing left for a second pass to do —
+// so unconditionally running it twice fixes Greenhouse's case without needing to special-case it.
+function stripOnce(html: string): string {
   const withLineBreaks = html
     .replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, "") // drop entirely — never meant to be visible text
     .replace(/<\/(p|div|li|h[1-6]|tr)>/gi, "\n")
@@ -21,4 +27,29 @@ export function htmlToPlainText(html: string): string {
   const collapsedSpaces = text.replace(/[^\S\n]{2,}/g, " ");
   const trimmedLines = collapsedSpaces.replace(/[^\S\n]*\n[^\S\n]*/g, "\n");
   return trimmedLines.replace(/\n{3,}/g, "\n\n").trim();
+}
+
+export function htmlToPlainText(html: string): string {
+  if (!html) return "";
+  return stripOnce(stripOnce(html));
+}
+
+// Short plain-text excerpt for card-list scanning (Discovery) — truncates at a word boundary
+// rather than mid-word where reasonably easy, appending an ellipsis only when actually truncated.
+// No date library is installed — this only needs whole-day granularity, so a small local helper
+// is simpler than adding a dependency. Shared by Pipeline (posting posted/found dates) and Prep
+// (application age) rather than each keeping its own copy.
+export function relativeTime(isoDate: string): string {
+  const days = Math.floor((Date.now() - new Date(isoDate).getTime()) / 86_400_000);
+  if (days <= 0) return "today";
+  if (days === 1) return "1d ago";
+  return `${days}d ago`;
+}
+
+export function snippet(html: string, maxChars = 200): string {
+  const text = htmlToPlainText(html).replace(/\s+/g, " ").trim();
+  if (text.length <= maxChars) return text;
+  const cut = text.slice(0, maxChars);
+  const lastSpace = cut.lastIndexOf(" ");
+  return `${lastSpace > maxChars * 0.6 ? cut.slice(0, lastSpace) : cut}…`;
 }

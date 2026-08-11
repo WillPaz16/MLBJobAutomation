@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import {
   DndContext,
   DragOverlay,
+  KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
@@ -10,13 +12,29 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { AlertTriangle, ExternalLink, FileText, GripVertical, MapPin } from "lucide-react";
+import {
+  AlertTriangle,
+  ExternalLink,
+  FileText,
+  GripVertical,
+  Kanban,
+  MapPin,
+  MoreVertical,
+} from "lucide-react";
 import { api } from "../api/client";
-import type { Application, ApplicationStage, Document, PostingCategory } from "../api/types";
-import { htmlToPlainText } from "@/lib/utils";
-import { CATEGORY_LABELS } from "@/lib/labels";
+import type { Application, ApplicationStage, Document } from "../api/types";
+import { htmlToPlainText, relativeTime } from "@/lib/utils";
+import { CATEGORY_FILTER_OPTIONS, CATEGORY_LABELS, SOURCE_LABELS, STAGE_LABELS } from "@/lib/labels";
+import { ErrorState } from "@/components/states/ErrorState";
+import { EmptyState } from "@/components/states/EmptyState";
+import { PageHeader, PageLayout } from "@/components/PageLayout";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -49,46 +67,9 @@ const STAGES: ApplicationStage[] = [
   "WITHDRAWN",
 ];
 
-const STAGE_LABELS: Record<ApplicationStage, string> = {
-  FOUND: "Found",
-  REVIEWING: "Reviewing",
-  APPLIED: "Applied",
-  INTERVIEW: "Interview",
-  OFFER: "Offer",
-  REJECTED: "Rejected",
-  WITHDRAWN: "Withdrawn",
-};
-
-const CATEGORY_COLORS: Record<PostingCategory, string> = {
-  BASEBALL_OPS: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200",
-  BASEBALL_ANALYTICS: "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-200",
-  BASEBALL_RND: "bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-200",
-  DATA_SCIENCE: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200",
-  OTHER: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
-};
-
-const SOURCE_LABELS: Record<string, string> = {
-  greenhouse: "Greenhouse",
-  lever: "Lever",
-  workday: "Workday",
-  adp: "ADP",
-  ukg: "UKG",
-  bamboohr: "BambooHR",
-  aaimtrack: "aaimtrack",
-  teamworkonline: "TeamWork Online",
-  dayforce: "Dayforce",
-  team_page: "Team page",
-  manual: "Manual",
-};
-
-// No date library is installed — this only needs whole-day granularity, so a small local helper
-// is simpler than adding a dependency.
-function relativeTime(isoDate: string): string {
-  const days = Math.floor((Date.now() - new Date(isoDate).getTime()) / 86_400_000);
-  if (days <= 0) return "today";
-  if (days === 1) return "1d ago";
-  return `${days}d ago`;
-}
+// Collapsed by default — these two stages tend to accumulate the most cards over time and are
+// checked far less often than the active pipeline stages.
+const DEFAULT_COLLAPSED_STAGES: ApplicationStage[] = ["REJECTED", "WITHDRAWN"];
 
 function docStatus(app: Application): { label: string; className: string } {
   const hasResume = !!app.resumeDocId;
@@ -118,20 +99,31 @@ function DocPicker({
 }) {
   return (
     <div className="mt-1">
-      <label className="text-[10px] uppercase text-muted-foreground">{label}</label>
-      <select
-        className="mt-0.5 w-full rounded border bg-background px-1.5 py-1 text-xs"
-        value={value ?? ""}
-        onChange={(e) => onChange(e.target.value)}
-        onPointerDown={(e) => e.stopPropagation()}
+      <label className="text-xs uppercase text-muted-foreground">{label}</label>
+      <Select
+        value={value ?? "__none__"}
+        onValueChange={(v) => onChange(v === "__none__" ? "" : (v ?? ""))}
       >
-        <option value="">— none —</option>
-        {docs.map((d) => (
-          <option key={d.id} value={d.id}>
-            {d.label}
-          </option>
-        ))}
-      </select>
+        {/* Base UI's Select portals SelectContent out of this card's DOM, so stopping
+            propagation there wouldn't help a draggable card — the trigger is the part that
+            stays inside the card, so that's where the pointer-down needs to be intercepted to
+            keep dnd-kit's PointerSensor from starting a drag when opening the dropdown. */}
+        <SelectTrigger
+          size="sm"
+          className="mt-0.5 w-full text-xs"
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <SelectValue placeholder="— none —" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="__none__">— none —</SelectItem>
+          {docs.map((d) => (
+            <SelectItem key={d.id} value={d.id}>
+              {d.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   );
 }
@@ -184,14 +176,15 @@ function CardBody({
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
-              <button
-                className="rounded p-0.5 text-muted-foreground hover:bg-accent"
+              <Button
+                variant="ghost"
+                size="icon-xs"
                 onPointerDown={(e) => e.stopPropagation()}
                 aria-label="Move to stage"
               />
             }
           >
-            ⋮
+            <MoreVertical />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             {STAGES.filter((s) => s !== application.stage).map((s) => (
@@ -205,9 +198,7 @@ function CardBody({
       <CardContent className="px-3">
         <div className="flex items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-1">
-            <Badge className={`${CATEGORY_COLORS[category]} border-none font-normal`}>
-              {CATEGORY_LABELS[category]}
-            </Badge>
+            <Badge variant="secondary">{CATEGORY_LABELS[category]}</Badge>
             {application.posting?.source?.type && (
               <Badge variant="outline" className="font-normal text-muted-foreground">
                 {SOURCE_LABELS[application.posting.source.type] ?? application.posting.source.type}
@@ -246,7 +237,7 @@ function CardBody({
             {application.posting.location}
           </div>
         )}
-        <div className="mt-1 text-[11px] text-muted-foreground">
+        <div className="mt-1 text-xs text-muted-foreground">
           {application.posting?.postedAt
             ? `Posted ${relativeTime(application.posting.postedAt)}`
             : application.posting?.discoveredAt
@@ -257,7 +248,7 @@ function CardBody({
           <button
             onClick={onOpenDetail}
             onPointerDown={(e) => e.stopPropagation()}
-            className="mt-1 line-clamp-1 text-left text-[11px] text-muted-foreground hover:text-foreground"
+            className="mt-1 line-clamp-1 text-left text-xs text-muted-foreground hover:text-foreground"
             title={application.notes}
           >
             {application.notes.slice(0, 60)}
@@ -268,14 +259,14 @@ function CardBody({
           <button
             onClick={onToggleExpand}
             onPointerDown={(e) => e.stopPropagation()}
-            className="text-[11px] font-medium text-primary hover:underline"
+            className="text-xs font-medium text-primary hover:underline"
           >
             {expanded ? "Hide documents" : "Assign documents"}
           </button>
           <button
             onClick={onOpenDetail}
             onPointerDown={(e) => e.stopPropagation()}
-            className="text-[11px] font-medium text-primary hover:underline"
+            className="text-xs font-medium text-primary hover:underline"
           >
             Notes
           </button>
@@ -285,7 +276,7 @@ function CardBody({
               target="_blank"
               rel="noreferrer"
               onPointerDown={(e) => e.stopPropagation()}
-              className="ml-auto inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-primary hover:underline"
+              className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-primary hover:underline"
               aria-label="Open original posting"
               title="Open original posting"
             >
@@ -334,6 +325,8 @@ function Column({
   applications,
   documents,
   expandedId,
+  collapsed,
+  onToggleCollapse,
   onToggleExpand,
   onAssignDoc,
   onMoveStage,
@@ -343,13 +336,41 @@ function Column({
   applications: Application[];
   documents: Document[];
   expandedId: string | null;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
   onToggleExpand: (id: string) => void;
   onAssignDoc: (id: string, field: "resumeDocId" | "coverDocId", docId: string) => void;
   onMoveStage: (id: string, stage: ApplicationStage) => void;
   onOpenDetail: (id: string) => void;
 }) {
+  // The droppable target stays mounted (and its id/ref unchanged) whether collapsed or
+  // expanded, so cards can still be dropped on a collapsed column.
   const { setNodeRef, isOver } = useDroppable({ id: stage });
   const ids = applications.map((a) => a.id);
+
+  if (collapsed) {
+    return (
+      <div
+        ref={setNodeRef}
+        className={`flex min-h-[300px] w-12 shrink-0 flex-col items-center gap-2 rounded-lg border bg-muted/30 p-2 ${
+          isOver ? "ring-2 ring-primary/40" : ""
+        }`}
+      >
+        <button
+          onClick={onToggleCollapse}
+          className="flex flex-1 flex-col items-center gap-2 py-2 text-muted-foreground hover:text-foreground"
+          aria-label={`Expand ${STAGE_LABELS[stage]} column`}
+        >
+          <Badge variant="secondary" className="h-5 min-w-5 justify-center rounded-full px-1.5 text-xs">
+            {applications.length}
+          </Badge>
+          <span className="-rotate-90 whitespace-nowrap text-xs font-semibold uppercase tracking-wide">
+            {STAGE_LABELS[stage]}
+          </span>
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -359,9 +380,12 @@ function Column({
       }`}
     >
       <div className="mb-1 flex items-center justify-between px-1 pt-1">
-        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <button
+          onClick={onToggleCollapse}
+          className="text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground"
+        >
           {STAGE_LABELS[stage]}
-        </span>
+        </button>
         <Badge variant="secondary" className="h-5 min-w-5 justify-center rounded-full px-1.5 text-xs">
           {applications.length}
         </Badge>
@@ -398,8 +422,23 @@ export function Pipeline() {
   const [savingNotes, setSavingNotes] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const [collapsedStages, setCollapsedStages] = useState<Set<ApplicationStage>>(
+    () => new Set(DEFAULT_COLLAPSED_STAGES)
+  );
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  function toggleCollapsed(stage: ApplicationStage) {
+    setCollapsedStages((prev) => {
+      const next = new Set(prev);
+      if (next.has(stage)) next.delete(stage);
+      else next.add(stage);
+      return next;
+    });
+  }
 
   async function load() {
     setLoading(true);
@@ -553,47 +592,48 @@ export function Pipeline() {
 
   if (loading) {
     return (
-      <div className="flex gap-4 p-6">
-        {[0, 1, 2].map((i) => (
-          <Skeleton key={i} className="h-80 w-72 rounded-lg" />
-        ))}
-      </div>
+      <PageLayout width="full">
+        <div className="flex gap-4">
+          {STAGES.map((stage) => (
+            <Skeleton key={stage} className="h-80 w-72 rounded-lg" />
+          ))}
+        </div>
+      </PageLayout>
     );
   }
 
   if (error) {
     return (
-      <div className="p-6">
-        <div className="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
-          Failed to load pipeline: {error}{" "}
-          <button className="underline" onClick={load}>
-            Retry
-          </button>
-        </div>
-      </div>
+      <PageLayout width="full">
+        <ErrorState title="Failed to load pipeline" error={error} onRetry={load} />
+      </PageLayout>
     );
   }
 
   return (
-    <div className="p-6">
+    <PageLayout width="full">
+      <PageHeader
+        icon={Kanban}
+        title="Pipeline"
+        description="Track every approved application through to offer or rejection."
+      />
       <div className="mb-4 flex items-center gap-3">
         <Select value={categoryFilter} onValueChange={(v) => setCategoryFilter(v ?? "all")}>
           <SelectTrigger className="w-56">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All categories</SelectItem>
-            <SelectItem value="BASEBALL_OPS">Baseball Ops</SelectItem>
-            <SelectItem value="BASEBALL_ANALYTICS">Baseball Analytics</SelectItem>
-            <SelectItem value="BASEBALL_RND">Baseball R&D</SelectItem>
-            <SelectItem value="DATA_SCIENCE">Data Science</SelectItem>
-            <SelectItem value="OTHER">Other</SelectItem>
+            {CATEGORY_FILTER_OPTIONS.map((c) => (
+              <SelectItem key={c.value} value={c.value}>
+                {c.label}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
         <span className="text-sm text-muted-foreground">{visibleApplications.length} applications</span>
       </div>
 
-      <div className="overflow-x-auto">
+      <div className="relative overflow-x-auto">
         <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
           <div className="flex gap-4">
             {STAGES.map((stage) => (
@@ -603,6 +643,8 @@ export function Pipeline() {
                 applications={sortedByColumn[stage]}
                 documents={documents}
                 expandedId={expandedId}
+                collapsed={collapsedStages.has(stage)}
+                onToggleCollapse={() => toggleCollapsed(stage)}
                 onToggleExpand={(id) => setExpandedId((prev) => (prev === id ? null : id))}
                 onAssignDoc={onAssignDoc}
                 onMoveStage={moveStage}
@@ -626,6 +668,23 @@ export function Pipeline() {
             )}
           </DragOverlay>
         </DndContext>
+
+        {applications.length === 0 && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <div className="pointer-events-auto">
+              <EmptyState
+                icon={Kanban}
+                title="No applications yet"
+                description="Approve a posting on Discovery to start tracking it through the pipeline."
+                action={
+                  <Button render={<Link to="/discovery" />} nativeButton={false}>
+                    Go to Discovery
+                  </Button>
+                }
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       <Dialog open={!!detailId} onOpenChange={(open) => !open && setDetailId(null)}>
@@ -668,6 +727,6 @@ export function Pipeline() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageLayout>
   );
 }

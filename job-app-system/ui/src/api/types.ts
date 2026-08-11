@@ -43,7 +43,10 @@ export interface Posting {
   applications: Application[];
   // Present only when a CandidateProfile exists — see api/src/fitScore.ts.
   fitScore?: number | null;
+  fitTier?: string | null;
   matchedSkills?: string[] | null;
+  reasons?: { kind: string; label: string; points: number }[] | null;
+  evidence?: { term: string; excerpt: string }[] | null;
 }
 
 export interface Document {
@@ -82,6 +85,7 @@ export interface ResumeBullet {
 export interface CandidateProfile {
   id: string;
   skills: string;
+  coreSkills: string | null;
   preferredCategories: string | null;
   locationKeywords: string | null;
   excludeKeywords: string | null;
@@ -94,4 +98,13 @@ export interface AnalyticsSummary {
   bySource: Record<string, number>;
   avgResponseDays: number | null;
   avgResponseDaysByStage: Record<string, number>;
+}
+
+// See api/src/routes/analytics.ts's GET /timeseries doc comment for the exact bucketing rules.
+export interface AnalyticsTimeseries {
+  weeks: string[];
+  discovered: number[];
+  applicationsCreated: number[];
+  applied: number[];
+  fitScores: number[];
 }

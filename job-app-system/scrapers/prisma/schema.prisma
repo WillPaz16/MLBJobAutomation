@@ -130,7 +130,8 @@ model NotificationLog {
 // a property of the primary key rather than app-level enforcement.
 model CandidateProfile {
   id                  String   @id @default("profile")
-  skills              String   // comma-separated keywords, the main match input
+  skills              String   // comma-separated keywords, the secondary/broader match pool
+  coreSkills          String?  // comma-separated keywords, higher-weight tier (see fitScore.ts)
   preferredCategories String?  // comma-separated PostingCategory values
   locationKeywords    String?  // comma-separated, small location boost
   excludeKeywords     String?  // comma-separated, dealbreaker penalty

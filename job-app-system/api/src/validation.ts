@@ -90,6 +90,7 @@ export const updateOrgProfileSchema = createOrgProfileSchema.partial();
 
 export const putCandidateProfileSchema = z.object({
   skills: z.string().min(1),
+  coreSkills: z.string().optional(),
   preferredCategories: z.string().optional(),
   locationKeywords: z.string().optional(),
   excludeKeywords: z.string().optional(),

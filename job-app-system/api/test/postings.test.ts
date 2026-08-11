@@ -204,6 +204,16 @@ describe("GET /api/postings fit scoring", () => {
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(2);
   });
+
+  it("sort=fit_desc produces a stable order across repeated requests when scores tie", async () => {
+    await createPosting({ title: "Tie A", description: "no relevant terms" });
+    await createPosting({ title: "Tie B", description: "no relevant terms" });
+    await createPosting({ title: "Tie C", description: "no relevant terms" });
+
+    const first = await request(app).get("/api/postings?sort=fit_desc");
+    const second = await request(app).get("/api/postings?sort=fit_desc");
+    expect(first.body.map((p: { id: string }) => p.id)).toEqual(second.body.map((p: { id: string }) => p.id));
+  });
 });
 
 describe("GET /api/postings/organizations", () => {
@@ -223,6 +233,18 @@ describe("GET /api/postings/:id", () => {
   it("404s for a missing posting", async () => {
     const res = await request(app).get("/api/postings/does-not-exist");
     expect(res.status).toBe(404);
+  });
+
+  it("attaches fitScore/matchedSkills when a profile exists, consistent with the list endpoint", async () => {
+    await request(app).put("/api/profile").send({ skills: "python, sql" });
+    const posting = await createPosting({
+      title: "Python Data Scientist",
+      description: "Uses Python and SQL daily",
+    });
+    const res = await request(app).get(`/api/postings/${posting.id}`);
+    expect(res.status).toBe(200);
+    expect(typeof res.body.fitScore).toBe("number");
+    expect(res.body.matchedSkills).toEqual(expect.arrayContaining(["python"]));
   });
 });
 

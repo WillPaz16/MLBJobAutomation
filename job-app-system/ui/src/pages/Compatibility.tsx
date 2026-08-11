@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/api/client";
 import type { PostingCategory } from "@/api/types";
-import { CATEGORY_LABELS } from "@/lib/labels";
+import { CATEGORY_LABELS, CATEGORY_ORDER } from "@/lib/labels";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -10,7 +10,41 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
-const CATEGORIES = Object.keys(CATEGORY_LABELS) as PostingCategory[];
+const CATEGORIES = CATEGORY_ORDER;
+
+// Default core skills seeded when no profile exists yet — short, posting-facing terms that
+// actually show up in job titles/descriptions, not CV vocabulary. See api/src/fitScore.ts's
+// core-vs-secondary skill tiering (core matches weight 3x, secondary matches weight 1x).
+const DEFAULT_CORE_SKILLS = [
+  "python",
+  "sql",
+  "machine learning",
+  "data science",
+  "analytics",
+  "r&d",
+  "baseball",
+  "statistics",
+  "modeling",
+];
+
+// A rough heuristic for "posting-facing": short technical/domain nouns rather than CV-only
+// vocabulary like "NSF", "publication", or "mentorship" — those dilute the score without ever
+// matching a real posting. Not a classifier, just a stopword-style exclusion list.
+const NON_POSTING_FACING_TAGS = new Set([
+  "nsf",
+  "icerm",
+  "publication",
+  "publications",
+  "teaching",
+  "mentorship",
+  "independent research",
+  "grant",
+  "grants",
+  "conference",
+  "presentation",
+  "award",
+  "fellowship",
+]);
 
 // The candidate's own skills/preferences, scored deterministically against posting descriptions
 // (api/src/fitScore.ts) — same keyword-substring style as scrapers/src/categorize.ts, not an ML
@@ -19,6 +53,7 @@ export function Compatibility() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [skills, setSkills] = useState("");
+  const [coreSkills, setCoreSkills] = useState("");
   const [preferredCategories, setPreferredCategories] = useState<Set<PostingCategory>>(new Set());
   const [locationKeywords, setLocationKeywords] = useState("");
   const [excludeKeywords, setExcludeKeywords] = useState("");
@@ -29,22 +64,26 @@ export function Compatibility() {
         const profile = await api.profile.get();
         if (profile) {
           setSkills(profile.skills);
+          setCoreSkills(profile.coreSkills ?? "");
           setPreferredCategories(
             new Set((profile.preferredCategories?.split(",").map((c) => c.trim()) ?? []) as PostingCategory[])
           );
           setLocationKeywords(profile.locationKeywords ?? "");
           setExcludeKeywords(profile.excludeKeywords ?? "");
         } else {
-          // No profile yet — suggest a starting point from existing ResumeBullet tags, still
-          // fully editable before ever being saved.
+          // No profile yet — seed core skills from a curated, posting-facing default list, and
+          // seed secondary skills from existing ResumeBullet tags minus the CV-only vocabulary
+          // that can never match a real posting (see NON_POSTING_FACING_TAGS above). Everything
+          // stays fully editable before ever being saved.
           const bullets = await api.resumeBullets.list();
           const tags = new Set<string>();
           for (const bullet of bullets) {
             for (const tag of bullet.tags?.split(",") ?? []) {
               const trimmed = tag.trim();
-              if (trimmed) tags.add(trimmed);
+              if (trimmed && !NON_POSTING_FACING_TAGS.has(trimmed.toLowerCase())) tags.add(trimmed);
             }
           }
+          setCoreSkills(DEFAULT_CORE_SKILLS.join(", "));
           setSkills(Array.from(tags).join(", "));
         }
       } catch {
@@ -70,6 +109,7 @@ export function Compatibility() {
     try {
       await api.profile.update({
         skills,
+        coreSkills,
         preferredCategories: Array.from(preferredCategories).join(","),
         locationKeywords,
         excludeKeywords,
@@ -102,6 +142,22 @@ export function Compatibility() {
           </CardHeader>
           <CardContent className="space-y-5">
             <div>
+              <Label htmlFor="coreSkills">Core skills</Label>
+              <Textarea
+                id="coreSkills"
+                value={coreSkills}
+                onChange={(e) => setCoreSkills(e.target.value)}
+                placeholder="python, sql, machine learning, r&d, baseball"
+                className="mt-1"
+                rows={2}
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Comma-separated — your strongest, most posting-facing terms. Weighted 3x higher than the skills
+                below.
+              </p>
+            </div>
+
+            <div>
               <Label htmlFor="skills">Skills</Label>
               <Textarea
                 id="skills"
@@ -111,7 +167,11 @@ export function Compatibility() {
                 className="mt-1"
                 rows={3}
               />
-              <p className="mt-1 text-xs text-muted-foreground">Comma-separated — the main match input.</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Comma-separated — the broader/secondary match pool. Skills that never match any posting only
+                dilute the score, not help it — prune terms that are pure CV vocabulary (e.g. "publication",
+                "mentorship") rather than skills a job posting would actually mention.
+              </p>
             </div>
 
             <div>

@@ -46,6 +46,24 @@ describe("ingestPostings", () => {
     expect(rows[0].missedRuns).toBe(0);
   });
 
+  it("backfills description on re-scrape when it was previously missing (fill-only)", async () => {
+    const source = await getOrCreateSource("test-source", "greenhouse", {});
+    await ingestPostings(source.id, [samplePosting({ description: undefined })], "TestCo");
+
+    await ingestPostings(source.id, [samplePosting({ description: "<p>Full text</p>" })], "TestCo");
+    const rows = await prisma.posting.findMany({ where: { sourceId: source.id } });
+    expect(rows[0].description).toBe("<p>Full text</p>");
+  });
+
+  it("never overwrites an existing description with an empty one from a flaky run", async () => {
+    const source = await getOrCreateSource("test-source", "greenhouse", {});
+    await ingestPostings(source.id, [samplePosting({ description: "<p>Good text</p>" })], "TestCo");
+
+    await ingestPostings(source.id, [samplePosting({ description: undefined })], "TestCo");
+    const rows = await prisma.posting.findMany({ where: { sourceId: source.id } });
+    expect(rows[0].description).toBe("<p>Good text</p>");
+  });
+
   it("treats the same externalId under a different source as distinct when the title differs", async () => {
     const sourceA = await getOrCreateSource("source-a", "greenhouse", {});
     const sourceB = await getOrCreateSource("source-b", "lever", {});

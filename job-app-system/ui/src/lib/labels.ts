@@ -1,4 +1,4 @@
-import type { PostingCategory } from "@/api/types";
+import type { ApplicationStage, PostingCategory } from "@/api/types";
 
 // Single source of truth for how a PostingCategory displays — reused by every page that renders
 // a category badge (Discovery, Pipeline, Prep, Analytics) instead of each doing its own
@@ -11,6 +11,50 @@ export const CATEGORY_LABELS: Record<PostingCategory, string> = {
   BASEBALL_RND: "Baseball R&D",
   DATA_SCIENCE: "Data Science",
   OTHER: "Other",
+};
+
+// Fixed display order for category filters/checkboxes — baseball-specific categories first
+// (ops -> analytics -> R&D), then the general data-science catch-all, then "other".
+export const CATEGORY_ORDER: PostingCategory[] = [
+  "BASEBALL_OPS",
+  "BASEBALL_ANALYTICS",
+  "BASEBALL_RND",
+  "DATA_SCIENCE",
+  "OTHER",
+];
+
+export const CATEGORY_OPTIONS: { value: PostingCategory; label: string }[] = CATEGORY_ORDER.map(
+  (value) => ({ value, label: CATEGORY_LABELS[value] })
+);
+
+export const CATEGORY_FILTER_OPTIONS: { value: PostingCategory | "all"; label: string }[] = [
+  { value: "all", label: "All categories" },
+  ...CATEGORY_OPTIONS,
+];
+
+// Moved from Pipeline.tsx so every page renders ApplicationStage/source labels the same way.
+export const STAGE_LABELS: Record<ApplicationStage, string> = {
+  FOUND: "Found",
+  REVIEWING: "Reviewing",
+  APPLIED: "Applied",
+  INTERVIEW: "Interview",
+  OFFER: "Offer",
+  REJECTED: "Rejected",
+  WITHDRAWN: "Withdrawn",
+};
+
+export const SOURCE_LABELS: Record<string, string> = {
+  greenhouse: "Greenhouse",
+  lever: "Lever",
+  workday: "Workday",
+  adp: "ADP",
+  ukg: "UKG",
+  bamboohr: "BambooHR",
+  aaimtrack: "aaimtrack",
+  teamworkonline: "TeamWork Online",
+  dayforce: "Dayforce",
+  team_page: "Team page",
+  manual: "Manual",
 };
 
 // Generic fallback for labels that aren't a fixed enum with a curated map (e.g. Analytics'

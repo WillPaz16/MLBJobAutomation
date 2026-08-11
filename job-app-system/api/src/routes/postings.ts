@@ -11,11 +11,17 @@ export const postingsRouter = Router();
 // signature narrow/pure while still accepting the richer Prisma result shape.
 function withFitScore<T extends { title: string; organization: string; category: string; location: string | null; description: string | null }>(
   posting: T,
-  profile: { skills: string; preferredCategories: string | null; locationKeywords: string | null; excludeKeywords: string | null } | null
-): T & { fitScore?: number; matchedSkills?: string[] } {
+  profile: {
+    skills: string;
+    coreSkills: string | null;
+    preferredCategories: string | null;
+    locationKeywords: string | null;
+    excludeKeywords: string | null;
+  } | null
+): T & { fitScore?: number; fitTier?: string; matchedSkills?: string[]; reasons?: unknown[]; evidence?: unknown[] } {
   if (!profile) return posting;
-  const { score, matchedSkills } = computeFitScore(posting, profile);
-  return { ...posting, fitScore: score, matchedSkills };
+  const { score, tier, matchedSkills, reasons, evidence } = computeFitScore(posting, profile);
+  return { ...posting, fitScore: score, fitTier: tier, matchedSkills, reasons, evidence };
 }
 
 const SORT_OPTIONS = {
@@ -60,7 +66,12 @@ postingsRouter.get(
         prisma.posting.count({ where }),
       ]);
       const scored = allPostings.map((p) => withFitScore(p, profile));
-      scored.sort((a, b) => (b.fitScore ?? 0) - (a.fitScore ?? 0));
+      scored.sort(
+        (a, b) =>
+          (b.fitScore ?? 0) - (a.fitScore ?? 0) ||
+          +new Date(b.discoveredAt) - +new Date(a.discoveredAt) ||
+          a.id.localeCompare(b.id)
+      );
       const start = skip ?? 0;
       const end = take !== undefined ? start + take : undefined;
       const paged = scored.slice(start, end);
@@ -107,12 +118,15 @@ postingsRouter.get(
 postingsRouter.get(
   "/:id",
   asyncHandler(async (req, res) => {
-    const posting = await prisma.posting.findUnique({
-      where: { id: req.params.id },
-      include: { source: true, applications: true, possibleDuplicateOf: true },
-    });
+    const [posting, profile] = await Promise.all([
+      prisma.posting.findUnique({
+        where: { id: req.params.id },
+        include: { source: true, applications: true, possibleDuplicateOf: true },
+      }),
+      prisma.candidateProfile.findUnique({ where: { id: "profile" } }),
+    ]);
     if (!posting) throw new HttpError(404, "Posting not found");
-    res.json(posting);
+    res.json(withFitScore(posting, profile));
   })
 );
 

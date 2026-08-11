@@ -34,7 +34,16 @@ export async function ingestPostings(sourceId: string, postings: NormalizedPosti
       if (existing.closedAt) reopened++;
       await prisma.posting.update({
         where: { id: existing.id },
-        data: { lastSeenAt: new Date(), missedRuns: 0, closedAt: null },
+        data: {
+          lastSeenAt: new Date(),
+          missedRuns: 0,
+          closedAt: null,
+          // Fill-only: never overwrite a description we already have with one we don't (a flaky
+          // run returning empty can't erase good text). This is also what backfills description
+          // for rows ingested before an adapter gained description support (see categorize()'s
+          // description-argument comment in categorize.ts).
+          ...(posting.description && !existing.description ? { description: posting.description } : {}),
+        },
       });
       skipped++;
       continue;

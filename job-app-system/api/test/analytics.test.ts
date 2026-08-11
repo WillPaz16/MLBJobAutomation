@@ -41,3 +41,38 @@ describe("GET /api/analytics/summary", () => {
     expect(res.body.avgResponseDaysByStage.FOUND).toBeUndefined();
   });
 });
+
+describe("GET /api/analytics/timeseries", () => {
+  it("returns 26 zero-filled weeks with no data", async () => {
+    const res = await request(app).get("/api/analytics/timeseries");
+    expect(res.status).toBe(200);
+    expect(res.body.weeks).toHaveLength(26);
+    expect(res.body.discovered).toHaveLength(26);
+    expect(res.body.applicationsCreated).toHaveLength(26);
+    expect(res.body.applied).toHaveLength(26);
+    expect(res.body.discovered.every((v: number) => v === 0)).toBe(true);
+    expect(res.body.fitScores).toEqual([]);
+  });
+
+  it("buckets discoveredAt into the current week and counts sum correctly", async () => {
+    await createPosting();
+    await createPosting();
+    const res = await request(app).get("/api/analytics/timeseries");
+    const total = res.body.discovered.reduce((a: number, b: number) => a + b, 0);
+    expect(total).toBe(2);
+    // Both postings were just created, so they should land in the last (current) bucket.
+    expect(res.body.discovered[res.body.discovered.length - 1]).toBe(2);
+  });
+
+  it("buckets application createdAt/appliedAt and sums correctly", async () => {
+    const posting = await createPosting();
+    await createApplication(posting.id, { stage: "APPLIED", appliedAt: new Date() });
+    await createApplication(posting.id, { stage: "FOUND" });
+
+    const res = await request(app).get("/api/analytics/timeseries");
+    const createdTotal = res.body.applicationsCreated.reduce((a: number, b: number) => a + b, 0);
+    const appliedTotal = res.body.applied.reduce((a: number, b: number) => a + b, 0);
+    expect(createdTotal).toBe(2);
+    expect(appliedTotal).toBe(1);
+  });
+});
