@@ -1,6 +1,7 @@
 import { prisma } from "./db.js";
 import type { NormalizedPosting } from "./types.js";
 import { isLikelyDuplicateTitle } from "./dedupe.js";
+import { classifySeniority } from "./seniority.js";
 
 // Consecutive scrape runs of an org's source that must miss a posting before it's considered
 // closed — not 1, so a single flaky/partial run can't wrongly close everything from that org.
@@ -43,6 +44,13 @@ export async function ingestPostings(sourceId: string, postings: NormalizedPosti
           // for rows ingested before an adapter gained description support (see categorize()'s
           // description-argument comment in categorize.ts).
           ...(posting.description && !existing.description ? { description: posting.description } : {}),
+          // Salary text won't change once posted and isn't protected data, so an unconditional
+          // fill-only overwrite (rather than description's stricter never-overwrite) is simplest —
+          // there's no flaky-run risk to guard against since a source either has it or doesn't.
+          ...(posting.salary && !existing.salary ? { salary: posting.salary } : {}),
+          // Unlike description, seniority is RE-COMPUTED on every re-scrape (not fill-only) — the
+          // classifier can improve over time even though the title itself rarely changes.
+          seniority: classifySeniority(posting.title, posting.description),
         },
       });
       skipped++;
@@ -68,8 +76,10 @@ export async function ingestPostings(sourceId: string, postings: NormalizedPosti
         organization: posting.organization,
         location: posting.location,
         category: posting.category,
+        seniority: classifySeniority(posting.title, posting.description),
         url: posting.url,
         description: posting.description,
+        salary: posting.salary,
         postedAt: posting.postedAt,
         lastSeenAt: new Date(),
         possibleDuplicateOfId: duplicateMatch?.id,

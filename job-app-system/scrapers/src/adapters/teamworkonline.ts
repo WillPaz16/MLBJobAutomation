@@ -25,6 +25,29 @@ function extractDetailLinks(listingHtml: string, orgPath: string): string[] {
   return [...links];
 }
 
+// schema.org's baseSalary shape varies (MonetaryAmount vs MonetaryAmountDistribution, unit
+// text vs structured min/max) — live-checked against several real Marlins/Reds postings and it
+// was absent in every one sampled, so this is wired up opportunistically and stays dormant in
+// practice rather than forced to always produce a string. Anything outside the shapes below
+// returns undefined rather than guessing.
+function extractSalary(jobPosting: Record<string, any>): string | undefined {
+  const baseSalary = jobPosting.baseSalary;
+  if (!baseSalary || typeof baseSalary !== "object") return undefined;
+  const value = baseSalary.value;
+  if (!value || typeof value !== "object") return undefined;
+
+  const currency = baseSalary.currency ?? "";
+  const unit = value.unitText ? `/${String(value.unitText).toLowerCase()}` : "";
+
+  if (typeof value.value === "number") {
+    return `${currency}${value.value}${unit}`.trim() || undefined;
+  }
+  if (typeof value.minValue === "number" && typeof value.maxValue === "number") {
+    return `${currency}${value.minValue} - ${currency}${value.maxValue}${unit}`.trim();
+  }
+  return undefined;
+}
+
 function extractJobPosting(detailHtml: string): Record<string, any> | undefined {
   const match = detailHtml.match(/<script type="application\/ld\+json">(.*?)<\/script>/s);
   if (!match) return undefined;
@@ -74,6 +97,7 @@ export const teamworkOnlineAdapter: Adapter = {
         category: categorize(title, organizationName, description),
         url,
         description,
+        salary: extractSalary(jobPosting),
         postedAt: jobPosting.datePosted ? new Date(jobPosting.datePosted) : undefined,
       });
     }

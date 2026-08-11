@@ -18,7 +18,10 @@ export const APPLICATION_STAGES = [
   "WITHDRAWN",
 ] as const;
 
+export const POSTING_SENIORITIES = ["ENTRY", "MID", "SENIOR", "EXECUTIVE"] as const;
+
 export const postingCategorySchema = z.enum(POSTING_CATEGORIES);
+export const postingSenioritySchema = z.enum(POSTING_SENIORITIES);
 export const applicationStageSchema = z.enum(APPLICATION_STAGES);
 
 export const updateApplicationSchema = z.object({
@@ -35,6 +38,8 @@ export const updatePostingSchema = z.object({
   organization: z.string().optional(),
   location: z.string().optional(),
   category: postingCategorySchema.optional(),
+  seniority: postingSenioritySchema.nullable().optional(),
+  salary: z.string().nullable().optional(),
   description: z.string().optional(),
   duplicateRejected: z.boolean().optional(),
   dismissedAt: z.string().datetime().nullable().optional(),

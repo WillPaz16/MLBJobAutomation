@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { api } from "../api/client";
 import type { Application, Posting, PostingCategory } from "../api/types";
 import { htmlToPlainText, snippet } from "@/lib/utils";
-import { CATEGORY_FILTER_OPTIONS, CATEGORY_LABELS } from "@/lib/labels";
+import { CATEGORY_FILTER_OPTIONS, CATEGORY_LABELS, SENIORITY_FILTER_OPTIONS, SENIORITY_LABELS } from "@/lib/labels";
 import { useFilterParams } from "@/hooks/useFilterParams";
 import { Pagination } from "@/components/Pagination";
 import { ErrorState } from "@/components/states/ErrorState";
@@ -40,11 +40,20 @@ const STATUSES: { value: "active" | "closed" | "all"; label: string }[] = [
 type SortOption = "discoveredAt_desc" | "discoveredAt_asc" | "postedAt_desc" | "postedAt_asc" | "fit_desc";
 
 const SORTS: { value: SortOption; label: string }[] = [
+  { value: "fit_desc", label: "Best fit first" },
   { value: "discoveredAt_desc", label: "Newest found first" },
   { value: "discoveredAt_asc", label: "Oldest found first" },
   { value: "postedAt_desc", label: "Newest posted first" },
   { value: "postedAt_asc", label: "Oldest posted first" },
-  { value: "fit_desc", label: "Best fit first" },
+];
+
+// Thresholds match api/src/fitScore.ts's fitTier boundaries exactly (Strong>=65, Good>=40,
+// Fair>=20, Weak<20) — the "or better" floor for each preset is that tier's own lower bound.
+const MIN_FIT_OPTIONS: { value: string; label: string }[] = [
+  { value: "none", label: "Any fit" },
+  { value: "20", label: "Fair or better" },
+  { value: "40", label: "Good or better" },
+  { value: "65", label: "Strong only" },
 ];
 
 // Tier-based styling replaces the old numeric-threshold badge coloring now that the API returns
@@ -62,10 +71,13 @@ const FILTER_DEFAULTS: Record<string, string> = {
   search: "",
   organization: "all",
   status: "active",
-  sort: "discoveredAt_desc",
+  sort: "fit_desc",
   hideDuplicates: "true",
   showDismissed: "false",
   pageSize: "25",
+  seniority: "all",
+  remoteOnly: "false",
+  minFit: "none",
 };
 
 const FILTER_CHIP_LABELS: Record<string, (value: string) => string> = {
@@ -78,6 +90,9 @@ const FILTER_CHIP_LABELS: Record<string, (value: string) => string> = {
   hideDuplicates: () => "Hide flagged duplicates: off",
   showDismissed: () => "Show dismissed: on",
   pageSize: (v) => `Rows per page: ${v}`,
+  seniority: (v) => `Level: ${SENIORITY_LABELS[v] ?? v}`,
+  remoteOnly: () => "Remote only",
+  minFit: (v) => `Fit: ${MIN_FIT_OPTIONS.find((o) => o.value === v)?.label ?? v}`,
 };
 
 function useDebounced<T>(value: T, delayMs: number): T {
@@ -172,6 +187,9 @@ export function Discovery() {
         sort: filters.sort as SortOption,
         hideDuplicates: filters.hideDuplicates === "true",
         showDismissed: filters.showDismissed === "true",
+        seniority: filters.seniority === "all" ? undefined : filters.seniority,
+        remoteOnly: filters.remoteOnly === "true" ? true : undefined,
+        minFit: filters.minFit === "none" ? undefined : Number(filters.minFit),
         take: pageSize,
         skip: (page - 1) * pageSize,
       });
@@ -443,6 +461,23 @@ export function Discovery() {
           </Select>
         </div>
         <div>
+          <Label htmlFor="filter-seniority" className="mb-1">
+            Level
+          </Label>
+          <Select value={filters.seniority} onValueChange={(v) => setFilter("seniority", v ?? "all")}>
+            <SelectTrigger id="filter-seniority" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {SENIORITY_FILTER_OPTIONS.map((s) => (
+                <SelectItem key={s.value} value={s.value}>
+                  {s.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
           <Label htmlFor="filter-location" className="mb-1">
             Location contains
           </Label>
@@ -518,6 +553,23 @@ export function Discovery() {
             </SelectContent>
           </Select>
         </div>
+        <div>
+          <Label htmlFor="filter-min-fit" className="mb-1">
+            Minimum fit
+          </Label>
+          <Select value={filters.minFit} onValueChange={(v) => setFilter("minFit", v ?? "none")}>
+            <SelectTrigger id="filter-min-fit" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {MIN_FIT_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         <div className="flex items-end">
           <Popover>
             <PopoverTrigger render={<Button variant="outline" size="sm" />}>
@@ -543,6 +595,16 @@ export function Discovery() {
                 />
                 <Label htmlFor="show-dismissed" className="text-xs font-medium text-muted-foreground">
                   Show dismissed
+                </Label>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Checkbox
+                  id="remote-only"
+                  checked={filters.remoteOnly === "true"}
+                  onCheckedChange={(checked) => setFilter("remoteOnly", checked === true ? "true" : "false")}
+                />
+                <Label htmlFor="remote-only" className="text-xs font-medium text-muted-foreground">
+                  Remote only
                 </Label>
               </div>
             </PopoverContent>
@@ -685,6 +747,14 @@ export function Discovery() {
                         </div>
                         <div className="text-sm text-muted-foreground">
                           {p.organization} · {p.location ?? "location unknown"}
+                          {p.salary && (
+                            <>
+                              {" · "}
+                              <Badge variant="outline" className="text-xs font-normal">
+                                {p.salary}
+                              </Badge>
+                            </>
+                          )}
                         </div>
                         {p.description && (
                           <p className="mt-1 line-clamp-2 max-w-2xl text-sm text-muted-foreground">
@@ -698,6 +768,7 @@ export function Discovery() {
                 <CardContent>
                   <div className="mb-3 flex flex-wrap items-center gap-1.5">
                     <Badge variant="secondary">{CATEGORY_LABELS[p.category]}</Badge>
+                    {p.seniority && <Badge variant="secondary">{SENIORITY_LABELS[p.seniority] ?? p.seniority}</Badge>}
                     {p.fitScore != null && (
                       <Tooltip>
                         <TooltipTrigger render={<button type="button" />}>

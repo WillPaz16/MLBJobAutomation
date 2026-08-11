@@ -73,6 +73,32 @@ describe("GET /api/postings", () => {
     expect(res.body[0].title).toBe("Lever role");
   });
 
+  it("filters by seniority", async () => {
+    await createPosting({ seniority: "SENIOR", title: "Senior role" });
+    await createPosting({ seniority: "ENTRY", title: "Entry role" });
+    const res = await request(app).get("/api/postings?seniority=SENIOR");
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].title).toBe("Senior role");
+  });
+
+  it("filters remote-only postings, composing correctly with a text location filter", async () => {
+    await createPosting({ location: "Remote", title: "Remote role" });
+    await createPosting({ location: "Chicago, IL (Remote friendly)", title: "Chicago remote-friendly role" });
+    await createPosting({ location: "Chicago, IL", title: "Chicago onsite role" });
+
+    const remoteOnly = await request(app).get("/api/postings?remoteOnly=true");
+    expect(remoteOnly.body).toHaveLength(2);
+    expect(remoteOnly.body.map((p: { title: string }) => p.title).sort()).toEqual(
+      ["Chicago remote-friendly role", "Remote role"].sort()
+    );
+
+    // remoteOnly + a text location filter must AND together, not clobber each other via
+    // duplicate object keys.
+    const combined = await request(app).get("/api/postings?remoteOnly=true&location=Chicago");
+    expect(combined.body).toHaveLength(1);
+    expect(combined.body[0].title).toBe("Chicago remote-friendly role");
+  });
+
   it("defaults to active-only (closedAt: null), excluding closed postings", async () => {
     await createPosting({ title: "Open role" });
     await createPosting({ title: "Closed role", closedAt: new Date() });
@@ -213,6 +239,32 @@ describe("GET /api/postings fit scoring", () => {
     const first = await request(app).get("/api/postings?sort=fit_desc");
     const second = await request(app).get("/api/postings?sort=fit_desc");
     expect(first.body.map((p: { id: string }) => p.id)).toEqual(second.body.map((p: { id: string }) => p.id));
+  });
+
+  it("minFit filters out low-scoring postings and reports the filtered count via X-Total-Count", async () => {
+    await request(app).put("/api/profile").send({ skills: "python, sql, r" });
+    await createPosting({ title: "No Match Role", description: "unrelated" });
+    await createPosting({ title: "Full Match Role", description: "python sql r" });
+    await createPosting({ title: "Partial Match Role", description: "python only" });
+
+    const full = await request(app).get("/api/postings?sort=fit_desc");
+    const fullMatchScore = full.body.find((p: { title: string }) => p.title === "Full Match Role").fitScore;
+
+    const res = await request(app).get(`/api/postings?minFit=${fullMatchScore}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].title).toBe("Full Match Role");
+    expect(res.headers["x-total-count"]).toBe("1");
+  });
+
+  it("minFit respects an explicitly requested sort order instead of forcing fit_desc", async () => {
+    await request(app).put("/api/profile").send({ skills: "python" });
+    const older = await createPosting({ title: "Older Match", description: "python", postedAt: new Date("2026-01-01") });
+    const newer = await createPosting({ title: "Newer Match", description: "python", postedAt: new Date("2026-06-01") });
+
+    const res = await request(app).get("/api/postings?minFit=0&sort=postedAt_asc");
+    expect(res.status).toBe(200);
+    expect(res.body.map((p: { id: string }) => p.id)).toEqual([older.id, newer.id]);
   });
 });
 

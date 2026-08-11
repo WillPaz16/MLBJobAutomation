@@ -54,6 +54,9 @@ export const api = {
       sort?: "discoveredAt_desc" | "discoveredAt_asc" | "postedAt_desc" | "postedAt_asc" | "fit_desc";
       hideDuplicates?: boolean;
       showDismissed?: boolean;
+      seniority?: string;
+      remoteOnly?: boolean;
+      minFit?: number;
       take?: number;
       skip?: number;
     }): Promise<{ postings: Posting[]; total: number }> => {
@@ -82,6 +85,7 @@ export const api = {
       return { postings, total };
     },
     organizations: () => request<string[]>("/postings/organizations"),
+    facets: () => request<{ seniorities: string[] }>("/postings/facets"),
     approve: (id: string) => request<Application>(`/postings/${id}/approve`, { method: "POST" }),
     remove: (id: string) => request<void>(`/postings/${id}`, { method: "DELETE" }),
     update: (id: string, data: Partial<{ duplicateRejected: boolean; dismissedAt: string | null }>) =>

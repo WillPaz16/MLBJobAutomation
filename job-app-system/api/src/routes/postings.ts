@@ -34,15 +34,37 @@ const SORT_OPTIONS = {
 postingsRouter.get(
   "/",
   asyncHandler(async (req, res) => {
-    const { category, location, q, source, organization, status, sort, hideDuplicates, showDismissed } = req.query;
+    const {
+      category,
+      seniority,
+      location,
+      remoteOnly,
+      q,
+      source,
+      organization,
+      status,
+      sort,
+      minFit,
+      hideDuplicates,
+      showDismissed,
+    } = req.query;
     const { take, skip } = paginationSchema.parse(req.query);
 
     const statusFilter =
       status === "closed" ? { closedAt: { not: null } } : status === "all" ? {} : { closedAt: null };
 
+    // `minFit` requires the same full-fetch-then-JS-filter treatment as fit_desc sorting (fit
+    // score isn't a DB column), but the two are independent/orthogonal: a caller can filter by
+    // minFit while sorting by postedAt, or sort by fit_desc with no minFit floor at all.
+    const parsedMinFit = typeof minFit === "string" ? Number(minFit) : undefined;
+    const hasMinFit = parsedMinFit !== undefined && !Number.isNaN(parsedMinFit);
+
     const where = {
       category: category ? (category as string) : undefined,
-      location: location ? { contains: location as string } : undefined,
+      seniority: seniority ? (seniority as string) : undefined,
+      // Matches the existing free-text `location` contains-filter's case sensitivity exactly
+      // (Prisma's default `contains` on SQLite is case-sensitive) — remoteOnly is just another
+      // `location`-shaped condition, combined via AND below rather than a duplicate object key.
       source: source ? { type: source as string } : undefined,
       organization: organization ? (organization as string) : undefined,
       dismissedAt: showDismissed === "true" ? undefined : null,
@@ -50,28 +72,47 @@ postingsRouter.get(
       AND: [
         q ? { OR: [{ title: { contains: q as string } }, { organization: { contains: q as string } }] } : {},
         hideDuplicates === "true" ? { OR: [{ possibleDuplicateOfId: null }, { duplicateRejected: true }] } : {},
+        location ? { location: { contains: location as string } } : {},
+        remoteOnly === "true" ? { location: { contains: "remote" } } : {},
       ],
     };
 
     const profile = await prisma.candidateProfile.findUnique({ where: { id: "profile" } });
 
-    if (sort === "fit_desc") {
-      // Fit score isn't a DB column, so it can't go through Prisma's orderBy — fetch every
-      // matching row (no take/skip here), score+sort in JS, then slice the page ourselves.
-      const [allPostings, total] = await Promise.all([
-        prisma.posting.findMany({
-          where,
-          include: { source: true, applications: true, possibleDuplicateOf: true },
-        }),
-        prisma.posting.count({ where }),
-      ]);
-      const scored = allPostings.map((p) => withFitScore(p, profile));
-      scored.sort(
-        (a, b) =>
-          (b.fitScore ?? 0) - (a.fitScore ?? 0) ||
-          +new Date(b.discoveredAt) - +new Date(a.discoveredAt) ||
-          a.id.localeCompare(b.id)
-      );
+    if (sort === "fit_desc" || hasMinFit) {
+      // Fit score isn't a DB column, so it can't go through Prisma's orderBy/where — fetch every
+      // matching row (no take/skip here), score in JS, optionally filter by minFit, sort
+      // according to whatever `sort` was actually requested (defaulting to discoveredAt_desc,
+      // same as the non-scored path — minFit doesn't force fit_desc sorting), then slice the
+      // page ourselves. X-Total-Count reflects the post-minFit-filter count, not the unfiltered
+      // total, since that's the count that actually matches the request.
+      const allPostings = await prisma.posting.findMany({
+        where,
+        include: { source: true, applications: true, possibleDuplicateOf: true },
+      });
+      let scored = allPostings.map((p) => withFitScore(p, profile));
+      if (hasMinFit) {
+        scored = scored.filter((p) => (p.fitScore ?? 0) >= parsedMinFit!);
+      }
+      if (sort === "fit_desc") {
+        scored.sort(
+          (a, b) =>
+            (b.fitScore ?? 0) - (a.fitScore ?? 0) ||
+            +new Date(b.discoveredAt) - +new Date(a.discoveredAt) ||
+            a.id.localeCompare(b.id)
+        );
+      } else {
+        const sortOrder =
+          typeof sort === "string" && sort in SORT_OPTIONS ? SORT_OPTIONS[sort as keyof typeof SORT_OPTIONS] : SORT_OPTIONS.discoveredAt_desc;
+        const [field, direction] = Object.entries(sortOrder)[0] as [string, "asc" | "desc"];
+        scored.sort((a, b) => {
+          const av = (a as any)[field];
+          const bv = (b as any)[field];
+          const cmp = av === bv ? 0 : av === null ? 1 : bv === null ? -1 : +new Date(av) - +new Date(bv);
+          return direction === "asc" ? cmp : -cmp;
+        });
+      }
+      const total = scored.length;
       const start = skip ?? 0;
       const end = take !== undefined ? start + take : undefined;
       const paged = scored.slice(start, end);
@@ -112,6 +153,20 @@ postingsRouter.get(
       orderBy: { organization: "asc" },
     });
     res.json(rows.map((r) => r.organization));
+  })
+);
+
+// Registered before "/:id" for the same reason as "/organizations" above.
+postingsRouter.get(
+  "/facets",
+  asyncHandler(async (_req, res) => {
+    const rows = await prisma.posting.findMany({
+      where: { seniority: { not: null } },
+      select: { seniority: true },
+      distinct: ["seniority"],
+      orderBy: { seniority: "asc" },
+    });
+    res.json({ seniorities: rows.map((r) => r.seniority) });
   })
 );
 

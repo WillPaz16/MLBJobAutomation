@@ -6,6 +6,7 @@ export interface NormalizedPosting {
   category: "BASEBALL_OPS" | "BASEBALL_ANALYTICS" | "BASEBALL_RND" | "DATA_SCIENCE" | "OTHER";
   url: string;
   description?: string;
+  salary?: string; // raw text, only when a source happens to expose it — display-only, never parsed
   postedAt?: Date;
 }
 

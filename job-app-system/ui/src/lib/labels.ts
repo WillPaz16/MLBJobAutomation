@@ -32,6 +32,27 @@ export const CATEGORY_FILTER_OPTIONS: { value: PostingCategory | "all"; label: s
   ...CATEGORY_OPTIONS,
 ];
 
+// Seniority is a fixed 4-value enum surfaced by the API (`Posting.seniority`) — same hardcoded
+// pattern as CATEGORY_LABELS/CATEGORY_FILTER_OPTIONS above rather than a facet-driven fetch.
+export const SENIORITY_LABELS: Record<string, string> = {
+  ENTRY: "Entry level",
+  MID: "Mid level",
+  SENIOR: "Senior",
+  EXECUTIVE: "Executive",
+};
+
+export const SENIORITY_ORDER: string[] = ["ENTRY", "MID", "SENIOR", "EXECUTIVE"];
+
+export const SENIORITY_OPTIONS: { value: string; label: string }[] = SENIORITY_ORDER.map((value) => ({
+  value,
+  label: SENIORITY_LABELS[value],
+}));
+
+export const SENIORITY_FILTER_OPTIONS: { value: string; label: string }[] = [
+  { value: "all", label: "All levels" },
+  ...SENIORITY_OPTIONS,
+];
+
 // Moved from Pipeline.tsx so every page renders ApplicationStage/source labels the same way.
 export const STAGE_LABELS: Record<ApplicationStage, string> = {
   FOUND: "Found",

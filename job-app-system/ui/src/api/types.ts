@@ -29,6 +29,8 @@ export interface Posting {
   organization: string;
   location: string | null;
   category: PostingCategory;
+  seniority: string | null;
+  salary: string | null;
   url: string;
   description: string | null;
   postedAt: string | null;
