@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { prisma } from "../src/db.js";
-import { getOrCreateSource, ingestPostings } from "../src/ingest.js";
+import { getOrCreateSource, ingestPostings, NOT_IN_CHUNK } from "../src/ingest.js";
 import type { NormalizedPosting } from "../src/types.js";
 
 function samplePosting(overrides: Partial<NormalizedPosting> = {}): NormalizedPosting {
@@ -117,6 +117,56 @@ describe("ingestPostings", () => {
     expect(original?.possibleDuplicateOfId).toBeNull();
   });
 
+  it("does not fuzzy-match a new posting against a long-closed posting with a similar title", async () => {
+    // The hoisted duplicate-check query is scoped to closedAt: null — a deliberate behavior
+    // change from the old per-posting refetch, which had no such scoping.
+    const sourceA = await getOrCreateSource("source-a", "teamworkonline", {});
+    const sourceB = await getOrCreateSource("source-b", "dayforce", {});
+    await ingestPostings(
+      sourceA.id,
+      [samplePosting({ externalId: "tw-close-1", organization: "Cleveland Guardians", title: "Coordinator, Community Partnerships and Events" })],
+      "Cleveland Guardians"
+    );
+    // Miss it for 2 runs so it closes.
+    await ingestPostings(sourceA.id, [], "Cleveland Guardians");
+    await ingestPostings(sourceA.id, [], "Cleveland Guardians");
+    const closedRow = await prisma.posting.findFirst({ where: { externalId: "tw-close-1" } });
+    expect(closedRow?.closedAt).toBeInstanceOf(Date);
+
+    const result = await ingestPostings(
+      sourceB.id,
+      [samplePosting({ externalId: "df-close-1", organization: "Cleveland Guardians", title: "Coordinator-Community Partnerships and Events" })],
+      "Cleveland Guardians"
+    );
+
+    expect(result.flaggedDuplicates).toBe(0);
+    const newRow = await prisma.posting.findFirst({ where: { externalId: "df-close-1" } });
+    expect(newRow?.possibleDuplicateOfId).toBeNull();
+  });
+
+  it("flags two near-identical titles inserted within the SAME ingestPostings batch against each other", async () => {
+    // The hoisted query fetches sameOrgPostings once up front; newly created rows must be
+    // pushed onto that same in-memory list, or a second near-identical title later in the
+    // same batch wouldn't be compared against the first (the old per-posting refetch got
+    // this for free by re-querying the DB every time).
+    const source = await getOrCreateSource("source-a", "teamworkonline", {});
+    const result = await ingestPostings(
+      source.id,
+      [
+        samplePosting({ externalId: "batch-1", organization: "Detroit Tigers", title: "Coordinator, Community Partnerships and Events" }),
+        samplePosting({ externalId: "batch-2", organization: "Detroit Tigers", title: "Coordinator-Community Partnerships and Events" }),
+      ],
+      "Detroit Tigers"
+    );
+
+    expect(result.inserted).toBe(2);
+    expect(result.flaggedDuplicates).toBe(1);
+    const rows = await prisma.posting.findMany({ where: { organization: "Detroit Tigers" } });
+    const first = rows.find((r) => r.externalId === "batch-1");
+    const second = rows.find((r) => r.externalId === "batch-2");
+    expect(second?.possibleDuplicateOfId).toBe(first?.id);
+  });
+
   it("does not flag genuinely different jobs at the same org", async () => {
     const sourceA = await getOrCreateSource("source-a", "teamworkonline", {});
     const sourceB = await getOrCreateSource("source-b", "dayforce", {});
@@ -152,6 +202,34 @@ describe("ingestPostings", () => {
 
     expect(result).toEqual({ inserted: 1, skipped: 1, flaggedDuplicates: 0, closed: 0, reopened: 0, total: 2 });
   });
+
+  it(
+    "guards SQLITE_MAX_VARIABLE_NUMBER by inverting the missing-posting query above NOT_IN_CHUNK seen ids",
+    async () => {
+      const source = await getOrCreateSource("test-source", "greenhouse", {});
+      // A posting that will go missing from the big run below.
+      await ingestPostings(source.id, [samplePosting({ externalId: "will-go-missing" })], "TestCo");
+
+      // A batch large enough to exceed NOT_IN_CHUNK, forcing the inverted (fetch-all-and-diff-in-JS)
+      // branch of closeMissingPostings instead of `externalId: { notIn: seenExternalIds } }`.
+      const bigBatch: NormalizedPosting[] = Array.from({ length: NOT_IN_CHUNK + 1 }, (_, i) =>
+        samplePosting({ externalId: `bulk-${i}`, title: `Bulk Role ${i}` })
+      );
+      const result = await ingestPostings(source.id, bigBatch, "TestCo");
+
+      expect(result.inserted).toBe(NOT_IN_CHUNK + 1);
+      expect(result.total).toBe(NOT_IN_CHUNK + 1);
+
+      const missingRow = await prisma.posting.findFirst({ where: { sourceId: source.id, externalId: "will-go-missing" } });
+      expect(missingRow?.missedRuns).toBe(1);
+      expect(missingRow?.closedAt).toBeNull();
+
+      const bulkRow = await prisma.posting.findFirst({ where: { sourceId: source.id, externalId: "bulk-0" } });
+      expect(bulkRow?.missedRuns).toBe(0);
+      expect(bulkRow?.closedAt).toBeNull();
+    },
+    30000
+  );
 
   describe("active/inactive tracking", () => {
     it("does not close a posting missing from just one run", async () => {

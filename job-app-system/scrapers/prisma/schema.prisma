@@ -68,6 +68,8 @@ model Posting {
   sourceSection         String?
 
   @@unique([sourceId, externalId])
+  @@index([organization])
+  @@index([sourceId, organization, closedAt])
 }
 
 model Application {

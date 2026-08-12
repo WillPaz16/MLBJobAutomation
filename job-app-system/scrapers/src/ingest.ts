@@ -9,6 +9,11 @@ import { isMlbOrg } from "./categorize.js";
 // closed — not 1, so a single flaky/partial run can't wrongly close everything from that org.
 const CLOSE_AFTER_MISSED_RUNS = 2;
 
+// SQLite's bind-param limit is 999 on older builds, 32766 on newer ones — stay conservative.
+// Above this many seen externalIds, `notIn: seenExternalIds` risks blowing the limit, so
+// closeMissingPostings inverts the query instead (fetch all open rows, diff in JS).
+export const NOT_IN_CHUNK = 900;
+
 export async function getOrCreateSource(name: string, type: string, config: Record<string, any>) {
   return prisma.source.upsert({
     where: { name },
@@ -26,6 +31,16 @@ export async function ingestPostings(sourceId: string, postings: NormalizedPosti
   let flaggedDuplicates = 0;
   let reopened = 0;
   const seenExternalIds: string[] = [];
+
+  // Hoisted out of the per-posting loop (was previously refetched for every NEW posting, an
+  // N+1). Scoped to closedAt: null — a deliberate behavior change, a new posting no longer
+  // fuzzy-matches against a long-closed one. Newly created rows in THIS batch are pushed onto
+  // this same in-memory list below, so two near-identical titles in one batch still flag each
+  // other against one another, which the old per-posting refetch got for free.
+  const sameOrgPostings: { id: string; title: string }[] = await prisma.posting.findMany({
+    where: { organization, closedAt: null },
+    select: { id: true, title: true },
+  });
 
   for (const posting of postings) {
     seenExternalIds.push(posting.externalId);
@@ -77,13 +92,9 @@ export async function ingestPostings(sourceId: string, postings: NormalizedPosti
     // match within the same organization instead. Flagged, not skipped: the match is inserted as
     // its own real row and linked via possibleDuplicateOfId so it stays visible and reviewable —
     // silently dropping it risked suppressing a genuinely different job that just shared wording.
-    const sameOrgPostings = await prisma.posting.findMany({
-      where: { organization: posting.organization },
-      select: { id: true, title: true },
-    });
     const duplicateMatch = sameOrgPostings.find((p) => isLikelyDuplicateTitle(p.title, posting.title));
 
-    await prisma.posting.create({
+    const created = await prisma.posting.create({
       data: {
         sourceId,
         externalId: posting.externalId,
@@ -104,6 +115,9 @@ export async function ingestPostings(sourceId: string, postings: NormalizedPosti
         possibleDuplicateOfId: duplicateMatch?.id,
       },
     });
+    // Push onto the same in-memory list used for fuzzy-matching above, so a second near-
+    // identical title later in THIS batch still gets flagged against it.
+    sameOrgPostings.push({ id: created.id, title: created.title });
     inserted++;
     if (duplicateMatch) flaggedDuplicates++;
   }
@@ -118,25 +132,46 @@ export async function ingestPostings(sourceId: string, postings: NormalizedPosti
 // Source), so a naive sourceId-only comparison would wrongly close every OTHER org's postings
 // under that adapter the moment any single org's run completed.
 async function closeMissingPostings(sourceId: string, organization: string, seenExternalIds: string[]): Promise<number> {
-  const missing = await prisma.posting.findMany({
-    where: {
-      sourceId,
-      organization,
-      closedAt: null,
-      externalId: { notIn: seenExternalIds },
-    },
-  });
+  let missing: { id: string; missedRuns: number }[];
 
-  let closed = 0;
-  for (const posting of missing) {
-    const missedRuns = posting.missedRuns + 1;
-    const willClose = missedRuns >= CLOSE_AFTER_MISSED_RUNS;
-    await prisma.posting.update({
-      where: { id: posting.id },
-      data: { missedRuns, closedAt: willClose ? new Date() : null },
+  if (seenExternalIds.length <= NOT_IN_CHUNK) {
+    missing = await prisma.posting.findMany({
+      where: {
+        sourceId,
+        organization,
+        closedAt: null,
+        externalId: { notIn: seenExternalIds },
+      },
+      select: { id: true, missedRuns: true },
     });
-    if (willClose) closed++;
+  } else {
+    // `externalId: { notIn: seenExternalIds }` binds one param per id — SQLite's limit is 999
+    // on older builds, 32766 on newer ones. Above NOT_IN_CHUNK, invert the query instead: fetch
+    // every open row for this (sourceId, organization) with no notIn filter, and diff the
+    // "missing" set in JS against a Set of what this run actually saw.
+    const seen = new Set(seenExternalIds);
+    const openPostings = await prisma.posting.findMany({
+      where: { sourceId, organization, closedAt: null },
+      select: { id: true, missedRuns: true, externalId: true },
+    });
+    missing = openPostings.filter((p) => !seen.has(p.externalId));
   }
 
-  return closed;
+  const staying = missing.filter((p) => p.missedRuns + 1 < CLOSE_AFTER_MISSED_RUNS).map((p) => p.id);
+  const closing = missing.filter((p) => p.missedRuns + 1 >= CLOSE_AFTER_MISSED_RUNS).map((p) => p.id);
+
+  if (staying.length > 0) {
+    await prisma.posting.updateMany({
+      where: { id: { in: staying } },
+      data: { missedRuns: { increment: 1 } },
+    });
+  }
+  if (closing.length > 0) {
+    await prisma.posting.updateMany({
+      where: { id: { in: closing } },
+      data: { missedRuns: { increment: 1 }, closedAt: new Date() },
+    });
+  }
+
+  return closing.length;
 }
