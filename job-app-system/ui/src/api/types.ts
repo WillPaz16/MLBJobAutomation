@@ -132,8 +132,6 @@ export interface AnalyticsSummary {
   total: number;
   byStage: Record<string, number>;
   bySource: Record<string, number>;
-  avgResponseDays: number | null;
-  avgResponseDaysByStage: Record<string, number>;
 }
 
 // See api/src/routes/analytics.ts's GET /timeseries doc comment for the exact bucketing rules.
@@ -143,6 +141,61 @@ export interface AnalyticsTimeseries {
   applicationsCreated: number[];
   applied: number[];
   fitScores: number[];
+}
+
+export interface StageStats {
+  median: number | null;
+  mean: number | null;
+  n: number;
+}
+
+// See api/src/routes/analytics.ts's GET /funnel doc comment for the exact shape/semantics
+// (backfill-source events count toward reached/conversion but are excluded from duration math).
+export interface AnalyticsFunnel {
+  reached: Record<string, number>;
+  conversion: Record<string, number | null>;
+  daysInStage: Record<string, StageStats>;
+  medianDaysToResponse: number | null;
+  meanDaysToResponse: number | null;
+  sampleSizes: { totalApplications: number; appliedReached: number; responseSampleSize: number };
+}
+
+export interface BarListEntry {
+  key: string;
+  label: string;
+  value: number;
+}
+
+// See api/src/routes/analytics.ts's GET /market doc comment for the exact shape/semantics.
+export interface AnalyticsMarket {
+  timeToClose: {
+    bucketLabels: string[];
+    mlb: number[];
+    nonMlb: number[];
+    postedAtBasedCount: number;
+    discoveredAtFallbackCount: number;
+  };
+  discoveryLag: StageStats;
+  dismissalBreakdown: {
+    category: BarListEntry[];
+    seniority: BarListEntry[];
+    workMode: BarListEntry[];
+    region: BarListEntry[];
+  };
+  fitScoreByCohort: {
+    dismissed: StageStats;
+    applied: StageStats;
+    other: StageStats;
+  };
+  supplyMix: {
+    weeks: string[];
+    active: number[];
+    closed: number[];
+    bySeniority: BarListEntry[];
+    byWorkMode: BarListEntry[];
+    byRegion: BarListEntry[];
+    byMlbTeam: BarListEntry[];
+  };
 }
 
 // Shared response shape for both GET /api/profile/coverage and POST /api/profile/coverage/preview

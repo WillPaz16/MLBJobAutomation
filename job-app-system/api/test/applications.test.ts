@@ -136,6 +136,83 @@ describe("PATCH /api/applications/:id", () => {
   });
 });
 
+describe("PATCH /api/applications/:id — stage event writing", () => {
+  it("writes exactly one ApplicationStageEvent on a real stage change", async () => {
+    const posting = await createPosting();
+    const application = await createApplication(posting.id, { stage: "FOUND" });
+
+    const res = await request(app).patch(`/api/applications/${application.id}`).send({ stage: "REVIEWING" });
+    expect(res.status).toBe(200);
+
+    const events = await prisma.applicationStageEvent.findMany({ where: { applicationId: application.id } });
+    expect(events).toHaveLength(1);
+    expect(events[0].fromStage).toBe("FOUND");
+    expect(events[0].toStage).toBe("REVIEWING");
+    expect(events[0].source).toBe("api");
+  });
+
+  it("writes zero events on a same-stage PATCH (e.g. editing notes)", async () => {
+    const posting = await createPosting();
+    const application = await createApplication(posting.id, { stage: "REVIEWING" });
+
+    await request(app).patch(`/api/applications/${application.id}`).send({ stage: "REVIEWING", notes: "hi" });
+
+    const events = await prisma.applicationStageEvent.findMany({ where: { applicationId: application.id } });
+    expect(events).toHaveLength(0);
+  });
+
+  it("writes zero events when notes are edited without a stage field at all", async () => {
+    const posting = await createPosting();
+    const application = await createApplication(posting.id, { stage: "REVIEWING" });
+
+    await request(app).patch(`/api/applications/${application.id}`).send({ notes: "hi" });
+
+    const events = await prisma.applicationStageEvent.findMany({ where: { applicationId: application.id } });
+    expect(events).toHaveLength(0);
+  });
+
+  it("auto-sets appliedAt on entering APPLIED", async () => {
+    const posting = await createPosting();
+    const application = await createApplication(posting.id, { stage: "REVIEWING" });
+
+    const res = await request(app).patch(`/api/applications/${application.id}`).send({ stage: "APPLIED" });
+    expect(res.status).toBe(200);
+    expect(res.body.appliedAt).not.toBeNull();
+  });
+
+  it("does not clear an already-set appliedAt when moving to a later stage", async () => {
+    const posting = await createPosting();
+    const appliedAt = new Date("2026-01-01T00:00:00Z");
+    const application = await createApplication(posting.id, { stage: "APPLIED", appliedAt });
+
+    const res = await request(app).patch(`/api/applications/${application.id}`).send({ stage: "INTERVIEW" });
+    expect(res.status).toBe(200);
+    expect(new Date(res.body.appliedAt).toISOString()).toBe(appliedAt.toISOString());
+  });
+
+  it("does not overwrite appliedAt if it's already set and stage moves to APPLIED again from a re-entry", async () => {
+    const posting = await createPosting();
+    const appliedAt = new Date("2026-01-01T00:00:00Z");
+    const application = await createApplication(posting.id, { stage: "INTERVIEW", appliedAt });
+
+    const res = await request(app).patch(`/api/applications/${application.id}`).send({ stage: "APPLIED" });
+    expect(new Date(res.body.appliedAt).toISOString()).toBe(appliedAt.toISOString());
+  });
+});
+
+describe("POST /api/postings/:id/approve — seed stage event", () => {
+  it("writes a seed ApplicationStageEvent when creating the initial application", async () => {
+    const posting = await createPosting();
+    const res = await request(app).post(`/api/postings/${posting.id}/approve`);
+    expect(res.status).toBe(201);
+
+    const events = await prisma.applicationStageEvent.findMany({ where: { applicationId: res.body.id } });
+    expect(events).toHaveLength(1);
+    expect(events[0].fromStage).toBeNull();
+    expect(events[0].toStage).toBe("REVIEWING");
+  });
+});
+
 describe("DELETE /api/applications/:id", () => {
   it("deletes an application", async () => {
     const posting = await createPosting();

@@ -91,6 +91,30 @@ model Application {
   appliedAt   DateTime?
   updatedAt   DateTime          @updatedAt
   createdAt   DateTime          @default(now())
+  stageEvents ApplicationStageEvent[]
+}
+
+// Append-only stage-transition history — Application.stage only ever tells you the CURRENT
+// stage, not when/how it got there. Written from a single choke point (the PATCH /:id handler
+// in routes/applications.ts, plus the seed event from POST /postings/:id/approve) so real funnel
+// analytics (routes/analytics.ts's GET /funnel) has honest data instead of being derived from
+// `updatedAt` (which bumps on ANY write, not just a stage change). `source: "backfill"` marks
+// events synthesized after the fact (scripts/backfillStageEvents.ts) from pre-existing
+// Applications that predate this model — those are fine for reached-counts/conversion (which
+// don't depend on exact timing) but must be excluded from all duration math (median/mean days in
+// stage, response time), since their timestamps are copied from createdAt/updatedAt, not real
+// transition times.
+model ApplicationStageEvent {
+  id            String      @id @default(cuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  fromStage     String?
+  toStage       String
+  createdAt     DateTime    @default(now())
+  source        String      @default("api") // "api" | "backfill"
+
+  @@index([applicationId, createdAt])
+  @@index([toStage, createdAt])
 }
 
 model Document {

@@ -53,21 +53,49 @@ applicationsRouter.get(
   })
 );
 
+// Single choke point for writing ApplicationStageEvent rows on a real stage change (see the
+// model's doc comment in schema.prisma). appliedAt is also decided here, server-side, in the
+// same transaction — entering APPLIED sets it (only if not already set), and moving to any OTHER
+// stage never clears an already-set appliedAt. The client (ui/src/pages/Pipeline.tsx) used to
+// compute/send appliedAt itself; that duplicated this exact logic and is now removed so there's
+// one owner of the field.
 applicationsRouter.patch(
   "/:id",
   asyncHandler(async (req, res) => {
     const data = updateApplicationSchema.parse(req.body);
-    const application = await prisma.application
-      .update({
+
+    const existing = await prisma.application.findUnique({ where: { id: req.params.id } });
+    if (!existing) throw new HttpError(404, "Application not found");
+
+    const stageChanged = data.stage !== undefined && data.stage !== existing.stage;
+
+    const application = await prisma.$transaction(async (tx) => {
+      const updated = await tx.application.update({
         where: { id: req.params.id },
         data: {
           ...data,
-          appliedAt: data.appliedAt ? new Date(data.appliedAt) : undefined,
+          appliedAt: data.appliedAt
+            ? new Date(data.appliedAt)
+            : data.stage === "APPLIED" && !existing.appliedAt
+              ? new Date()
+              : undefined,
         },
-      })
-      .catch(() => {
-        throw new HttpError(404, "Application not found");
       });
+
+      if (stageChanged) {
+        await tx.applicationStageEvent.create({
+          data: {
+            applicationId: existing.id,
+            fromStage: existing.stage,
+            toStage: data.stage as string,
+            source: "api",
+          },
+        });
+      }
+
+      return updated;
+    });
+
     res.json(application);
   })
 );

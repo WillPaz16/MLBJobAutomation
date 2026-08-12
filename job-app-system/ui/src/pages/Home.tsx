@@ -174,14 +174,10 @@ export function Home() {
             render={() => activeApplicationCount ?? "—"}
           />
           <StatSlot
-            label="Avg. response time"
+            label="Total applications"
             to="/analytics"
             state={summary}
-            render={() =>
-              summary.status === "ok" && summary.value.avgResponseDays != null
-                ? `${summary.value.avgResponseDays.toFixed(1)}d`
-                : "—"
-            }
+            render={() => (summary.status === "ok" ? summary.value.total : "—")}
           />
         </div>
 

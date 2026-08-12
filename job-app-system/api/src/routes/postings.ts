@@ -381,8 +381,17 @@ postingsRouter.post(
   asyncHandler(async (req, res) => {
     const posting = await prisma.posting.findUnique({ where: { id: req.params.id } });
     if (!posting) throw new HttpError(404, "Posting not found");
-    const application = await prisma.application.create({
-      data: { postingId: posting.id, stage: "REVIEWING" },
+    const application = await prisma.$transaction(async (tx) => {
+      const created = await tx.application.create({
+        data: { postingId: posting.id, stage: "REVIEWING" },
+      });
+      // Seed event — the second (and only other) write path to ApplicationStageEvent besides
+      // the PATCH handler's stage-change branch, so an application's history always starts
+      // with a real "how did this get created" row instead of a gap before its first PATCH.
+      await tx.applicationStageEvent.create({
+        data: { applicationId: created.id, fromStage: null, toStage: created.stage, source: "api" },
+      });
+      return created;
     });
     res.status(201).json(application);
   })

@@ -36,6 +36,8 @@ beforeAll(() => {
 
 afterEach(async () => {
   const { prisma } = await import("../src/db.js");
+  // FK ordering: ApplicationStageEvent rows reference Application, so they must go first.
+  await prisma.applicationStageEvent.deleteMany();
   await prisma.application.deleteMany();
   await prisma.document.deleteMany();
   await prisma.posting.deleteMany();

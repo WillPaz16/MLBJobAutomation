@@ -36,3 +36,18 @@ export async function createApplication(postingId: string, overrides: Record<str
     data: { postingId, stage: "FOUND", ...overrides },
   });
 }
+
+export async function createStageEvent(
+  applicationId: string,
+  overrides: Partial<Parameters<typeof prisma.applicationStageEvent.create>[0]["data"]> = {}
+) {
+  return prisma.applicationStageEvent.create({
+    data: {
+      applicationId,
+      fromStage: overrides.fromStage ?? null,
+      toStage: (overrides.toStage as string) ?? "FOUND",
+      source: overrides.source ?? "api",
+      ...overrides,
+    },
+  });
+}

@@ -575,11 +575,10 @@ export function Pipeline() {
       prev.map((a) => (a.id === id ? { ...a, stage: newStage, order: destOrder } : a))
     );
     try {
-      await api.applications.update(id, {
-        stage: newStage,
-        order: destOrder,
-        appliedAt: newStage === "APPLIED" && !app.appliedAt ? new Date().toISOString() : undefined,
-      });
+      // appliedAt is now decided server-side (see applications.ts's PATCH handler) — entering
+      // APPLIED sets it there in the same transaction as the stage-event write, so it's never
+      // computed client-side here.
+      await api.applications.update(id, { stage: newStage, order: destOrder });
     } catch (err) {
       setApplications(previous);
       toast.error(err instanceof Error ? err.message : "Failed to update stage — reverted");

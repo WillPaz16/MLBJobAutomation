@@ -108,6 +108,20 @@ export const createOrgProfileSchema = z.object({
 
 export const updateOrgProfileSchema = createOrgProfileSchema.partial();
 
+// Optional filters for GET /api/analytics/summary (and reused by /funnel where sensible).
+// All-time/no-filter by default so existing callers (Home.tsx, pre-existing tests) that pass no
+// query params are unaffected.
+export const analyticsQuerySchema = z.object({
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional(),
+  category: postingCategorySchema.optional(),
+  isMlbTeam: z.coerce.boolean().optional(),
+});
+
+export const timeseriesQuerySchema = z.object({
+  weeks: z.coerce.number().int().positive().max(104).optional(),
+});
+
 export const putCandidateProfileSchema = z.object({
   skills: z.string().min(1),
   coreSkills: z.string().optional(),

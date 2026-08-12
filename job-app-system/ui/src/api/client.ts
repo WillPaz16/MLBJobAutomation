@@ -1,4 +1,6 @@
 import type {
+  AnalyticsFunnel,
+  AnalyticsMarket,
   AnalyticsSummary,
   AnalyticsTimeseries,
   Application,
@@ -142,8 +144,17 @@ export const api = {
     fileUrl: (id: string, download = false) => `/api/documents/${id}/file${download ? "?download=1" : ""}`,
   },
   analytics: {
-    summary: () => request<AnalyticsSummary>("/analytics/summary"),
-    timeseries: () => request<AnalyticsTimeseries>("/analytics/timeseries"),
+    summary: (params?: { from?: string; to?: string; category?: string; isMlbTeam?: boolean }) => {
+      const entries = Object.entries(params ?? {}).filter(([, v]) => v !== undefined) as [string, string][];
+      const q = new URLSearchParams(entries.map(([k, v]) => [k, String(v)])).toString();
+      return request<AnalyticsSummary>(`/analytics/summary${q ? `?${q}` : ""}`);
+    },
+    timeseries: (params?: { weeks?: number }) => {
+      const q = params?.weeks ? `?weeks=${params.weeks}` : "";
+      return request<AnalyticsTimeseries>(`/analytics/timeseries${q}`);
+    },
+    funnel: () => request<AnalyticsFunnel>("/analytics/funnel"),
+    market: () => request<AnalyticsMarket>("/analytics/market"),
   },
   notifications: {
     list: () => request<{ id: string; summary: string; createdAt: string }[]>("/notifications"),
