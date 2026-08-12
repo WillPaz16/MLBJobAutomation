@@ -27,7 +27,11 @@ export function classifySeniority(title: string, description?: string): Seniorit
   }
 
   // ENTRY: title-only — internships and explicitly junior/entry-track titles.
-  if (/\b(intern|internship|entry.level|associate|coordinator|assistant|apprentice)\b/i.test(titleOnly)) {
+  if (
+    /\b(intern|internship|entry.level|associate|coordinator|assistant|apprentice|new grad(uate)?|early career|university grad|campus|class of 20\d\d|recent grad)\b/i.test(
+      titleOnly
+    )
+  ) {
     return "ENTRY";
   }
 

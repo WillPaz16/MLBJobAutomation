@@ -55,8 +55,8 @@ export async function ingestPostings(sourceId: string, postings: NormalizedPosti
           // Same re-compute-every-scrape treatment as seniority above, for the same reason: the
           // classifiers in location.ts can improve over time even though location text rarely
           // changes for an already-seen posting.
-          workMode: classifyWorkMode(posting.location, posting.description),
-          region: classifyRegion(posting.location),
+          workMode: classifyWorkMode(posting.location ?? null, posting.description ?? null),
+          region: classifyRegion(posting.location ?? null),
         },
       });
       skipped++;
@@ -83,8 +83,8 @@ export async function ingestPostings(sourceId: string, postings: NormalizedPosti
         location: posting.location,
         category: posting.category,
         seniority: classifySeniority(posting.title, posting.description),
-        workMode: classifyWorkMode(posting.location, posting.description),
-        region: classifyRegion(posting.location),
+        workMode: classifyWorkMode(posting.location ?? null, posting.description ?? null),
+        region: classifyRegion(posting.location ?? null),
         url: posting.url,
         description: posting.description,
         salary: posting.salary,

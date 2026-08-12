@@ -230,6 +230,36 @@ React UI, all running on this machine — nothing is deployed anywhere.
   it carries description text. `aaimtrack.ts` wasn't verifiable this round because the one
   configured org (Cardinals) had zero live postings to test a detail endpoint against — revisit
   when it has openings, don't guess at a shape.
+- **`newGradList.ts` (source `simplify-new-grad`) replaces the 6 Greenhouse + 1 Lever "general
+  data-science-heavy companies" sources** (FanDuel, Catapult Sports, Instacart, Robinhood, Airbnb,
+  Coinbase, Palantir) — those were flooding Discovery with senior/staff-level and international
+  roles that don't fit a new grad's search. It scrapes the community-maintained
+  `github.com/SimplifyJobs/New-Grad-Positions` README (`dev` branch raw markdown), which embeds a
+  raw HTML `<table>` per category section. **Structurally different from every other adapter
+  here: one fetch yields postings spanning 50+ organizations**, not one config entry = one org —
+  `runDiscovery.ts` has a dedicated `runNewGradListAdapter()` path that groups the adapter's
+  output by `organization` and calls `ingestPostings` once per group, since `ingestPostings`
+  requires a single organization per call for its closing-pass scoping. Only 3 of the repo's 6
+  section headers are pulled (`sources.config.ts`'s `newGradListConfig.sections`): "Data Science,
+  AI & Machine Learning" and "Quantitative Finance" map to `DATA_SCIENCE` (real statistics/
+  modeling overlap for the latter), "Product Management" maps to `OTHER` (a PM role isn't a data
+  science role even at a data-driven company) — Software Engineering, Hardware Engineering, and
+  the repo's own "Other" section are skipped entirely, not just excluded from ingestion. The real
+  apply URL is the first `<a href>` inside the row's 4th `<td>` (wrapping the "Apply" image) —
+  the 1st `<td>`'s anchor is a `simplify.jobs/c/...` company-profile link and the 4th `<td>`'s
+  *second* anchor is a `simplify.jobs/p/...` tracking link; neither is the real posting.
+  `externalId` is `sha256(applyUrl)`, same manual-posting precedent as `POST /api/postings/
+  manual`, since row order/position in the bot-maintained README isn't stable. No `description`
+  field exists in this source (same as `adp.ts`). One README quirk worth remembering: a company
+  cell containing only `↳` means "same organization as the immediately preceding row" (used when
+  one company posts multiple new-grad roles back to back) — the adapter carries the previous
+  row's organization forward rather than treating `↳` as a literal org name. Company names can
+  also carry a leading legend emoji (🔥 FAANG+, 🛂 no sponsorship, 🇺🇸 US-citizenship-required, 🔒
+  closed, 🎓 advanced-degree-required) which the adapter strips before use.
+- **`seniority.ts`'s ENTRY regex was extended for "new grad" phrasing** (`new grad(uate)?`,
+  `early career`, `university grad`, `campus`, `class of 20\d\d`, `recent grad`) — this is the
+  dominant phrasing in the SimplifyJobs source above, and the pre-existing regex (intern/entry-
+  level/associate/coordinator/assistant/apprentice) didn't match any of it.
 - **`teamPageAdapter` supports an optional `descriptionSelector`** — when set, it navigates to
   each posting's own detail page (the `href` from `linkSelector`) and pulls `textContent` from
   that selector, same per-posting-detail-fetch pattern as `workday.ts`/`bamboohr.ts`. Only add it

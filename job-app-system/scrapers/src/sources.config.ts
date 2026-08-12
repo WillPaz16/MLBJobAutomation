@@ -9,20 +9,12 @@ export const greenhouseSources: { boardToken: string; organizationName: string }
   { boardToken: "clevelandguardiansbops", organizationName: "Cleveland Guardians" },
   { boardToken: "baltimoreorioles", organizationName: "Baltimore Orioles" },
   { boardToken: "athleticsbaseballops", organizationName: "Athletics" },
-  // General data-science-heavy companies
-  { boardToken: "fanduel", organizationName: "FanDuel" },
-  { boardToken: "catapultsports", organizationName: "Catapult Sports" },
-  { boardToken: "instacart", organizationName: "Instacart" },
-  { boardToken: "robinhood", organizationName: "Robinhood" },
-  { boardToken: "airbnb", organizationName: "Airbnb" },
-  { boardToken: "coinbase", organizationName: "Coinbase" },
 ];
 
 // Lever: find an org's site slug from their careers page URL: jobs.lever.co/<site>.
 export const leverSources: { site: string; organizationName: string }[] = [
   { site: "redsox", organizationName: "Boston Red Sox" },
   { site: "sfgiants", organizationName: "San Francisco Giants" },
-  { site: "palantir", organizationName: "Palantir" },
 ];
 
 // Workday: several MLB teams' front offices run on Workday-hosted career sites
@@ -221,3 +213,17 @@ export const teamPageSources: {
 // on all of it, and "blocked for curl" ≠ "blocked for Playwright" — only a block that survives
 // genuine browser navigation (a CAPTCHA/challenge page, or the page itself failing to load) is a
 // real dead end.
+
+// SimplifyJobs/New-Grad-Positions (github.com/SimplifyJobs/New-Grad-Positions) — a community-
+// maintained, actively-updated README tracking new-grad tech/DS/quant/PM roles across 50+
+// companies. Replaces the 6 Greenhouse + 1 Lever "general data-science-heavy companies" sources
+// above (FanDuel, Catapult Sports, Instacart, Robinhood, Airbnb, Coinbase, Palantir) — those were
+// flooding Discovery with senior/staff-level and international roles that don't fit a new grad's
+// search; this source is scoped to new-grad roles by construction. Section header text confirmed
+// live via curl against the raw README (`dev` branch) — see newGradList.ts for the parsing
+// contract (single multi-org fetch, not one-config-entry-per-org like every other adapter here).
+// Single config object, not an array of per-org entries — this adapter has no per-org config
+// shape (see newGradListAdapter's fetchPostings signature).
+export const newGradListConfig: { sections: string[] } = {
+  sections: ["Data Science, AI & Machine Learning", "Quantitative Finance", "Product Management"],
+};

@@ -20,6 +20,12 @@ describe("classifySeniority", () => {
     expect(classifySeniority("Marketing Assistant")).toBe("ENTRY");
   });
 
+  it("classifies 'new grad' phrasing as ENTRY", () => {
+    expect(classifySeniority("Software Engineer New Grad")).toBe("ENTRY");
+    expect(classifySeniority("Data Scientist, Early Career")).toBe("ENTRY");
+    expect(classifySeniority("Software Engineer - University Grad Program")).toBe("ENTRY");
+  });
+
   it("classifies a bare professional title with no level word as MID", () => {
     // "Data Analyst" alone implies a real professional IC role even without an explicit level
     // word, so it defaults to MID rather than null.

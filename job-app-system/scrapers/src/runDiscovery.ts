@@ -8,6 +8,7 @@ import { aaimtrackAdapter } from "./adapters/aaimtrack.js";
 import { teamworkOnlineAdapter } from "./adapters/teamworkonline.js";
 import { dayforceAdapter } from "./adapters/dayforce.js";
 import { teamPageAdapter } from "./adapters/teamPage.js";
+import { newGradListAdapter } from "./adapters/newGradList.js";
 import {
   greenhouseSources,
   leverSources,
@@ -19,6 +20,7 @@ import {
   teamworkOnlineSources,
   dayforceSources,
   teamPageSources,
+  newGradListConfig,
 } from "./sources.config.js";
 import { getOrCreateSource, ingestPostings } from "./ingest.js";
 import { prisma } from "./db.js";
@@ -55,6 +57,53 @@ async function runAdapter(adapter: Adapter, configs: Record<string, any>[]) {
   return totalInserted;
 }
 
+// newGradListAdapter is structurally different from every other adapter: one fetch yields
+// postings spanning potentially 50+ different organizations, rather than one config entry = one
+// org. ingestPostings requires a single `organization` string per call (for its closing-pass
+// scoping), so its output must be grouped by organization first, then ingested once per group —
+// never as one ungrouped call, which would break that scoping (see CLAUDE.md).
+async function runNewGradListAdapter(): Promise<number> {
+  const source = await getOrCreateSource(
+    newGradListAdapter.sourceName,
+    newGradListAdapter.sourceType,
+    {}
+  );
+  let totalInserted = 0;
+
+  try {
+    const postings = await newGradListAdapter.fetchPostings(newGradListConfig);
+    const byOrg = new Map<string, typeof postings>();
+    for (const posting of postings) {
+      const group = byOrg.get(posting.organization) ?? [];
+      group.push(posting);
+      byOrg.set(posting.organization, group);
+    }
+
+    for (const [organization, orgPostings] of byOrg) {
+      const { inserted, skipped, closed, reopened, flaggedDuplicates } = await ingestPostings(
+        source.id,
+        orgPostings,
+        organization
+      );
+      totalInserted += inserted;
+      const extra = [
+        closed > 0 ? `${closed} closed` : null,
+        reopened > 0 ? `${reopened} reopened` : null,
+        flaggedDuplicates > 0 ? `${flaggedDuplicates} flagged as possible duplicates` : null,
+      ]
+        .filter(Boolean)
+        .join(", ");
+      console.log(
+        `[${newGradListAdapter.sourceName}:${organization}] +${inserted} new, ${skipped} already known${extra ? `, ${extra}` : ""}`
+      );
+    }
+  } catch (err) {
+    console.error(`[${newGradListAdapter.sourceName}] failed:`, (err as Error).message);
+  }
+
+  return totalInserted;
+}
+
 async function main() {
   const results = await Promise.all([
     runAdapter(greenhouseAdapter, greenhouseSources),
@@ -67,6 +116,7 @@ async function main() {
     runAdapter(teamworkOnlineAdapter, teamworkOnlineSources),
     runAdapter(dayforceAdapter, dayforceSources),
     runAdapter(teamPageAdapter, teamPageSources),
+    runNewGradListAdapter(),
   ]);
   const inserted = results.reduce((a, b) => a + b, 0);
   console.log(`Discovery run complete. ${inserted} new posting(s) inserted.`);
