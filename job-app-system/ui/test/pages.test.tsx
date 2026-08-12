@@ -43,7 +43,14 @@ vi.mock("../src/api/client", () => ({
       }),
     },
     applications: { list: vi.fn().mockResolvedValue([]), update: vi.fn() },
-    documents: { list: vi.fn().mockResolvedValue([]), create: vi.fn(), remove: documentsRemove },
+    documents: {
+      list: vi.fn().mockResolvedValue([]),
+      get: vi.fn().mockResolvedValue(null),
+      create: vi.fn(),
+      remove: documentsRemove,
+      scan: vi.fn().mockResolvedValue({ inserted: 0, skipped: 0 }),
+      fileUrl: (id: string, download = false) => `/api/documents/${id}/file${download ? "?download=1" : ""}`,
+    },
     analytics: {
       summary: vi.fn().mockResolvedValue({
         total: 0,

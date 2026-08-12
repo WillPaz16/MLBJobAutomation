@@ -31,8 +31,8 @@ export const applicationStageSchema = z.enum(APPLICATION_STAGES);
 export const updateApplicationSchema = z.object({
   stage: applicationStageSchema.optional(),
   order: z.number().int().optional(),
-  resumeDocId: z.string().optional(),
-  coverDocId: z.string().optional(),
+  resumeDocId: z.string().nullable().optional(),
+  coverDocId: z.string().nullable().optional(),
   notes: z.string().optional(),
   appliedAt: z.string().datetime().optional(),
 });
@@ -58,6 +58,15 @@ export const createDocumentSchema = z.object({
   isBaseTemplate: z.boolean().optional(),
   generatedFromBulletIds: z.string().optional(),
   toneId: z.string().optional(),
+});
+
+export const registerDocumentSchema = z.object({
+  sourcePath: z.string().min(1),
+  kind: z.enum(["resume", "cover_letter"]),
+  label: z.string().min(1).optional(),
+  isBaseTemplate: z.boolean().optional(),
+  applicationId: z.string().optional(),
+  attachAs: z.enum(["resume", "cover"]).optional(),
 });
 
 export const paginationSchema = z.object({

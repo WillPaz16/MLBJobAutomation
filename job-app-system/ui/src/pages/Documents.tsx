@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { FileSignature, FileText, FolderOpen, Trash2 } from "lucide-react";
+import { AlertTriangle, Download, FileSignature, FileText, FolderOpen, ScanSearch, Trash2 } from "lucide-react";
 import { api, ApiError } from "../api/client";
-import type { Document } from "../api/types";
+import type { Document, DocumentDetail } from "../api/types";
 import { ErrorState } from "@/components/states/ErrorState";
 import { EmptyState } from "@/components/states/EmptyState";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog,
@@ -32,16 +33,41 @@ export function Documents() {
   const [filePath, setFilePath] = useState("");
   const [saving, setSaving] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [usageById, setUsageById] = useState<Record<string, DocumentDetail>>({});
+  const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
 
   async function load() {
     setLoading(true);
     setError(null);
     try {
-      setDocuments(await api.documents.list());
+      const docs = await api.documents.list();
+      setDocuments(docs);
+      const details = await Promise.all(
+        docs.map((d) => api.documents.get(d.id).catch(() => null))
+      );
+      const map: Record<string, DocumentDetail> = {};
+      details.forEach((d) => {
+        if (d) map[d.id] = d;
+      });
+      setUsageById(map);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load documents");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function scanForNewFiles() {
+    setScanning(true);
+    try {
+      const result = await api.documents.scan();
+      toast.success(`Scan complete — ${result.inserted} new, ${result.skipped} already registered`);
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Scan failed");
+    } finally {
+      setScanning(false);
     }
   }
 
@@ -97,6 +123,11 @@ export function Documents() {
         description="Base resumes and cover letters available to attach to applications."
         count={{ value: documents.length, noun: documents.length === 1 ? "document" : "documents" }}
         actions={
+          <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={scanForNewFiles} disabled={scanning}>
+            <ScanSearch className="mr-1 size-4" />
+            {scanning ? "Scanning…" : "Scan for new files"}
+          </Button>
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger render={<Button size="sm" />}>Add document</DialogTrigger>
             <DialogContent>
@@ -140,6 +171,7 @@ export function Documents() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+          </div>
         }
       />
 
@@ -156,16 +188,49 @@ export function Documents() {
             title="Resumes"
             icon={FileText}
             documents={resumes}
+            usageById={usageById}
             onDelete={setConfirmDeleteId}
+            onPreview={setPreviewDoc}
           />
           <DocumentList
             title="Cover Letters"
             icon={FileSignature}
             documents={coverLetters}
+            usageById={usageById}
             onDelete={setConfirmDeleteId}
+            onPreview={setPreviewDoc}
           />
         </div>
       )}
+
+      <Dialog open={!!previewDoc} onOpenChange={(open) => !open && setPreviewDoc(null)}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>{previewDoc?.label}</DialogTitle>
+          </DialogHeader>
+          {previewDoc && previewDoc.filePath.toLowerCase().endsWith(".pdf") ? (
+            <iframe
+              src={api.documents.fileUrl(previewDoc.id)}
+              title={previewDoc.label}
+              className="h-[70vh] w-full rounded-md border"
+            />
+          ) : (
+            <div className="rounded-md border bg-muted/30 p-4 text-sm text-muted-foreground">
+              Preview isn't available for Word documents in-app. Download it to view.
+              <div className="mt-3">
+                <Button
+                  size="sm"
+                  render={<a href={previewDoc ? api.documents.fileUrl(previewDoc.id, true) : "#"} />}
+                  nativeButton={false}
+                >
+                  <Download className="mr-1 size-4" />
+                  Download
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <ConfirmDialog
         open={!!confirmDeleteId}
@@ -184,12 +249,16 @@ function DocumentList({
   title,
   icon: Icon,
   documents,
+  usageById,
   onDelete,
+  onPreview,
 }: {
   title: string;
   icon: React.ComponentType<{ className?: string }>;
   documents: Document[];
+  usageById: Record<string, DocumentDetail>;
   onDelete: (id: string) => void;
+  onPreview: (d: Document) => void;
 }) {
   return (
     <div>
@@ -201,34 +270,83 @@ function DocumentList({
         <EmptyState icon={FileText} title="None yet" />
       ) : (
         <ul className="space-y-2">
-          {documents.map((d) => (
-            <li
-              key={d.id}
-              className="flex items-center justify-between gap-2 rounded-md border p-2 text-sm"
-            >
-              <div className="min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <span className="truncate">{d.label}</span>
-                  {d.isBaseTemplate && <Badge variant="secondary">base</Badge>}
-                </div>
-                <div
-                  className="mt-0.5 flex items-center gap-1 truncate text-xs text-muted-foreground"
-                  title={d.filePath}
-                >
-                  <FolderOpen className="size-3 shrink-0" />
-                  <span className="truncate">{d.filePath}</span>
-                </div>
-              </div>
-              <Button
-                variant="destructive"
-                size="icon-xs"
-                aria-label="Delete document"
-                onClick={() => onDelete(d.id)}
+          {documents.map((d) => {
+            const usage = usageById[d.id];
+            const exists = d.exists ?? true;
+            return (
+              <li
+                key={d.id}
+                className="flex items-center justify-between gap-2 rounded-md border p-2 text-sm"
               >
-                <Trash2 />
-              </Button>
-            </li>
-          ))}
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      className="truncate text-left hover:underline"
+                      onClick={() => exists && onPreview(d)}
+                      disabled={!exists}
+                    >
+                      {d.label}
+                    </button>
+                    {d.isBaseTemplate && <Badge variant="secondary">base</Badge>}
+                    {!exists && (
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={<Badge variant="destructive" className="gap-1" />}
+                        >
+                          <AlertTriangle className="size-3" /> file missing
+                        </TooltipTrigger>
+                        <TooltipContent>File no longer exists on disk.</TooltipContent>
+                      </Tooltip>
+                    )}
+                    {usage && usage.usedBy.length > 0 && (
+                      <Tooltip>
+                        <TooltipTrigger render={<Badge variant="outline" />}>
+                          Used by {usage.usedBy.length}
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          {usage.usedBy
+                            .map((u) => `${u.postingTitle} — ${u.organization}`)
+                            .join(", ")}
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                  </div>
+                  <div
+                    className="mt-0.5 flex items-center gap-1 truncate text-xs text-muted-foreground"
+                    title={d.filePath}
+                  >
+                    <FolderOpen className="size-3 shrink-0" />
+                    <span className="truncate">{d.filePath}</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1">
+                  {exists ? (
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      aria-label="Open file"
+                      render={<a href={api.documents.fileUrl(d.id)} target="_blank" rel="noreferrer" />}
+                      nativeButton={false}
+                    >
+                      <FolderOpen />
+                    </Button>
+                  ) : (
+                    <Button variant="ghost" size="icon-xs" aria-label="Open file" disabled>
+                      <FolderOpen />
+                    </Button>
+                  )}
+                  <Button
+                    variant="destructive"
+                    size="icon-xs"
+                    aria-label="Delete document"
+                    onClick={() => onDelete(d.id)}
+                  >
+                    <Trash2 />
+                  </Button>
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

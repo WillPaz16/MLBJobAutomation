@@ -103,6 +103,17 @@ model Document {
   toneId                String?
   tone                  TonePreset? @relation(fields: [toneId], references: [id])
   createdAt             DateTime @default(now())
+
+  // Managed file storage (Phase 4). A document is "managed" iff storageKey != null — its bytes
+  // live under api/data/documents/, copied in (never moved) from wherever they originated.
+  // filePath is kept as the legacy/external-path reference; sourcePath records provenance for a
+  // managed copy specifically (where it was copied from, e.g. Resumes/ or Cover Letters/).
+  storageKey            String?  // basename inside api/data/documents/; null = legacy/external-path-only
+  originalFilename      String?
+  mimeType               String?
+  sizeBytes              Int?
+  sha256                 String?
+  sourcePath             String?
   resumeFor             Application[] @relation("ResumeDoc")
   coverFor              Application[] @relation("CoverDoc")
 }

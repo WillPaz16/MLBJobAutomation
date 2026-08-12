@@ -64,6 +64,34 @@ export interface Document {
   filePath: string;
   isBaseTemplate: boolean;
   createdAt: string;
+  storageKey: string | null;
+  originalFilename: string | null;
+  mimeType: string | null;
+  sizeBytes: number | null;
+  sha256: string | null;
+  sourcePath: string | null;
+  // Present on GET /api/documents (list) and GET /api/documents/:id.
+  exists?: boolean;
+}
+
+export interface DocumentUsage {
+  applicationId: string;
+  role: "resume" | "cover";
+  postingTitle: string;
+  organization: string;
+  stage: ApplicationStage;
+}
+
+export interface DocumentDetail extends Document {
+  usedBy: DocumentUsage[];
+}
+
+// GET /api/applications/:id/prep-context response shape.
+export interface PrepContext {
+  application: Application;
+  orgProfile: { id: string; organizationName: string; notes: string | null; preferredToneId: string | null } | null;
+  tonePreset: { id: string; name: string; guidance: string; isDefault: boolean } | null;
+  resumeBullets: ResumeBullet[];
 }
 
 export interface Application {

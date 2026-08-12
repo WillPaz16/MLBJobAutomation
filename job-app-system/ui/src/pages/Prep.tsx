@@ -13,6 +13,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { ErrorState } from "@/components/states/ErrorState";
 import { EmptyState } from "@/components/states/EmptyState";
 import { PageHeader, PageLayout } from "@/components/PageLayout";
+import { PrepContextPanel } from "@/components/PrepContextPanel";
 
 const STALE_AFTER_DAYS = 7;
 
@@ -152,6 +153,9 @@ export function Prep() {
                   <Button variant="outline" size="sm" onClick={() => copyPrepPrompt(app)}>
                     {copiedId === app.id ? "Copied — now attach on Pipeline" : "Copy prep prompt"}
                   </Button>
+                </CardContent>
+                <CardContent className="pt-0">
+                  <PrepContextPanel applicationId={app.id} defaultOpen={false} />
                 </CardContent>
               </Card>
             );

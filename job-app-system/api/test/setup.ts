@@ -1,7 +1,8 @@
 import { execSync } from "child_process";
-import { existsSync, unlinkSync } from "fs";
+import { existsSync, unlinkSync, mkdtempSync, rmSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
+import { tmpdir } from "os";
 import { afterAll, afterEach, beforeAll } from "vitest";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -14,6 +15,15 @@ const TEST_DB_PATH = join(__dirname, "../prisma/test.db");
 // file's imports thanks to Vitest's setupFiles ordering.
 process.env.DATABASE_URL = "file:./test.db";
 process.env.NODE_ENV = "test";
+
+// Managed-document storage + the Resumes/Cover Letters scan dirs all point at throwaway temp
+// directories for the whole test run — never the real Professional/Resumes,
+// Professional/Cover Letters, or api/data/documents. Same DATABASE_URL-style must-be-set-before-
+// import requirement applies (documentImport.ts and routes/documents.ts read these at module load).
+const TEST_TMP_ROOT = mkdtempSync(join(tmpdir(), "job-app-docs-test-"));
+process.env.DOCS_RESUME_DIR = join(TEST_TMP_ROOT, "Resumes");
+process.env.DOCS_COVER_LETTER_DIR = join(TEST_TMP_ROOT, "Cover Letters");
+process.env.DOCUMENTS_STORAGE_DIR = join(TEST_TMP_ROOT, "documents-storage");
 
 beforeAll(() => {
   if (existsSync(TEST_DB_PATH)) unlinkSync(TEST_DB_PATH);
@@ -41,4 +51,5 @@ afterAll(async () => {
   const { prisma } = await import("../src/db.js");
   await prisma.$disconnect();
   if (existsSync(TEST_DB_PATH)) unlinkSync(TEST_DB_PATH);
+  rmSync(TEST_TMP_ROOT, { recursive: true, force: true });
 });

@@ -11,6 +11,7 @@ build/
 job-app-system/api/data/*.db
 job-app-system/api/data/*.db-journal
 job-app-system/api/data/backups/
+job-app-system/api/data/documents/
 job-app-system/api/prisma/test.db
 job-app-system/api/prisma/test.db-journal
 job-app-system/scrapers/prisma/test.db

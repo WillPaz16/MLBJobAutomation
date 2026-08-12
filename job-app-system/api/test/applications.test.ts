@@ -108,6 +108,32 @@ describe("PATCH /api/applications/:id", () => {
     const res = await request(app).patch("/api/applications/does-not-exist").send({ stage: "APPLIED" });
     expect(res.status).toBe(404);
   });
+
+  // Regression test: resumeDocId/coverDocId must accept an explicit null to actually clear the
+  // FK server-side. Previously the UI sent `{ [field]: undefined }` for "— none —", which
+  // JSON.stringify drops from the request body entirely — the PATCH body became `{}` and the
+  // column never cleared. See ui/src/pages/Pipeline.tsx's DocPicker/onAssignDoc.
+  it("clears resumeDocId when explicitly set to null", async () => {
+    const posting = await createPosting();
+    const application = await createApplication(posting.id);
+    const resume = await createDocument({ kind: "resume" });
+
+    const setRes = await request(app)
+      .patch(`/api/applications/${application.id}`)
+      .send({ resumeDocId: resume.id });
+    expect(setRes.status).toBe(200);
+    expect(setRes.body.resumeDocId).toBe(resume.id);
+
+    const clearRes = await request(app)
+      .patch(`/api/applications/${application.id}`)
+      .send({ resumeDocId: null });
+    expect(clearRes.status).toBe(200);
+    expect(clearRes.body.resumeDocId).toBeNull();
+
+    const getRes = await request(app).get("/api/applications");
+    const fetched = getRes.body.find((a: { id: string }) => a.id === application.id);
+    expect(fetched.resumeDocId).toBeNull();
+  });
 });
 
 describe("DELETE /api/applications/:id", () => {

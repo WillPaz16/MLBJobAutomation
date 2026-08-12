@@ -48,17 +48,23 @@ write goes through the same zod validation as the UI.
    canonical naming convention going forward; don't perpetuate the older inconsistent patterns
    found in some existing files (missing "Will Paz" prefix, swapped word order, role-before-org).
    Use the `docx` skill for real Word formatting.
-6. Register the draft and link it to the application:
+6. Register the draft and link it to the application in one call — `/register` copies the file
+   from `Cover Letters/` into managed storage (`api/data/documents/`), computes its hash, creates
+   the `Document` row, and attaches it to the application, all in one request:
    ```bash
-   curl -s -X POST http://localhost:4000/api/documents -H "Content-Type: application/json" -d '{
+   curl -s -X POST http://localhost:4000/api/documents/register -H "Content-Type: application/json" -d '{
+     "sourcePath": "<absolute path to the .docx in Cover Letters/>",
      "kind": "cover_letter",
      "label": "Will Paz Cover Letter - <Org> - <Role>",
-     "filePath": "<absolute path to the .docx>",
-     "generatedFromBulletIds": "<comma-separated ResumeBullet ids actually used>",
-     "toneId": "<TonePreset id used>"
+     "applicationId": "<applicationId>",
+     "attachAs": "cover"
    }'
+   ```
+   If you also want to set the stage to `REVIEWING` or record the personalized talking points,
+   follow up with a plain PATCH (never set `stage` to `APPLIED` here or anywhere in this flow —
+   a human always approves before anything is actually submitted):
+   ```bash
    curl -s -X PATCH http://localhost:4000/api/applications/<applicationId> -H "Content-Type: application/json" -d '{
-     "coverDocId": "<new document id>",
      "stage": "REVIEWING",
      "notes": "<personalized talking points, if not appended to the cover letter itself>"
    }'

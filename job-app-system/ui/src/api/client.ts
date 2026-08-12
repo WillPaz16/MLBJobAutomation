@@ -6,7 +6,9 @@ import type {
   CandidateProfile,
   CandidateProfileInput,
   Document,
+  DocumentDetail,
   Posting,
+  PrepContext,
   ProfileCoverage,
   ResumeBullet,
 } from "./types";
@@ -120,20 +122,24 @@ export const api = {
       data: Partial<{
         stage: ApplicationStage;
         order: number;
-        resumeDocId: string;
-        coverDocId: string;
+        resumeDocId: string | null;
+        coverDocId: string | null;
         notes: string;
         appliedAt: string;
       }>
     ) => request<Application>(`/applications/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
     remove: (id: string) => request<void>(`/applications/${id}`, { method: "DELETE" }),
+    prepContext: (id: string) => request<PrepContext>(`/applications/${id}/prep-context`),
   },
   documents: {
     list: (kind?: "resume" | "cover_letter") =>
       request<Document[]>(`/documents${kind ? `?kind=${kind}` : ""}`),
+    get: (id: string) => request<DocumentDetail>(`/documents/${id}`),
     create: (data: { kind: string; label: string; filePath: string; isBaseTemplate?: boolean }) =>
       request<Document>("/documents", { method: "POST", body: JSON.stringify(data) }),
     remove: (id: string) => request<void>(`/documents/${id}`, { method: "DELETE" }),
+    scan: () => request<{ inserted: number; skipped: number }>("/documents/scan", { method: "POST" }),
+    fileUrl: (id: string, download = false) => `/api/documents/${id}/file${download ? "?download=1" : ""}`,
   },
   analytics: {
     summary: () => request<AnalyticsSummary>("/analytics/summary"),

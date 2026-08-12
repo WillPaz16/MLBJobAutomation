@@ -5,6 +5,7 @@ import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { backupDatabase } from "./backup.js";
 import { generateNotificationSummary, logNotificationFailure } from "./notifications.js";
+import { scanDocumentDirs } from "./documentImport.js";
 
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -47,6 +48,14 @@ export async function runDailyDiscovery() {
   } catch (err) {
     console.error("[scheduler] notification summary failed:", err);
     await logNotificationFailure("Notification summary", err);
+  }
+
+  try {
+    const { inserted, skipped } = await scanDocumentDirs();
+    console.log(`[scheduler] document scan: ${inserted.length} new, ${skipped} already registered`);
+  } catch (err) {
+    console.error("[scheduler] document scan failed:", err);
+    await logNotificationFailure("Document scan", err);
   }
 }
 

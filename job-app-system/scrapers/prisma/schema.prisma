@@ -103,6 +103,14 @@ model Document {
   toneId                String?
   tone                  TonePreset? @relation(fields: [toneId], references: [id])
   createdAt             DateTime @default(now())
+
+  storageKey            String?
+  originalFilename      String?
+  mimeType               String?
+  sizeBytes              Int?
+  sha256                 String?
+  sourcePath             String?
+
   resumeFor             Application[] @relation("ResumeDoc")
   coverFor              Application[] @relation("CoverDoc")
 }

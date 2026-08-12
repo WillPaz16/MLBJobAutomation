@@ -23,6 +23,7 @@ import {
   AlertTriangle,
   ExternalLink,
   FileText,
+  FileDown,
   GripVertical,
   Kanban,
   MapPin,
@@ -31,6 +32,7 @@ import {
 import { api } from "../api/client";
 import type { Application, ApplicationStage, Document } from "../api/types";
 import { htmlToPlainText, relativeTime } from "@/lib/utils";
+import { PrepContextPanel } from "@/components/PrepContextPanel";
 import { CATEGORY_FILTER_OPTIONS, CATEGORY_LABELS, SOURCE_LABELS, STAGE_LABELS } from "@/lib/labels";
 import { ErrorState } from "@/components/states/ErrorState";
 import { EmptyState } from "@/components/states/EmptyState";
@@ -205,16 +207,44 @@ function CardBody({
               </Badge>
             )}
           </div>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <span className={`flex items-center gap-1 text-xs ${status.className}`} />
-              }
-            >
-              <FileText className="size-3.5" />
-            </TooltipTrigger>
-            <TooltipContent>{status.label}</TooltipContent>
-          </Tooltip>
+          <div className="flex items-center gap-1">
+            {application.resumeDocId && (
+              <a
+                href={api.documents.fileUrl(application.resumeDocId)}
+                target="_blank"
+                rel="noreferrer"
+                onPointerDown={(e) => e.stopPropagation()}
+                className="text-muted-foreground hover:text-primary"
+                aria-label="Open attached resume"
+                title="Open attached resume"
+              >
+                <FileText className="size-3.5" />
+              </a>
+            )}
+            {application.coverDocId && (
+              <a
+                href={api.documents.fileUrl(application.coverDocId)}
+                target="_blank"
+                rel="noreferrer"
+                onPointerDown={(e) => e.stopPropagation()}
+                className="text-muted-foreground hover:text-primary"
+                aria-label="Open attached cover letter"
+                title="Open attached cover letter"
+              >
+                <FileDown className="size-3.5" />
+              </a>
+            )}
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <span className={`flex items-center gap-1 text-xs ${status.className}`} />
+                }
+              >
+                <span aria-hidden="true">•</span>
+              </TooltipTrigger>
+              <TooltipContent>{status.label}</TooltipContent>
+            </Tooltip>
+          </div>
         </div>
         {application.posting?.closedAt && (
           <Tooltip>
@@ -558,9 +588,10 @@ export function Pipeline() {
 
   async function onAssignDoc(id: string, field: "resumeDocId" | "coverDocId", docId: string) {
     const previous = applications;
-    setApplications((prev) => prev.map((a) => (a.id === id ? { ...a, [field]: docId || null } : a)));
+    const value = docId || null;
+    setApplications((prev) => prev.map((a) => (a.id === id ? { ...a, [field]: value } : a)));
     try {
-      await api.applications.update(id, { [field]: docId || undefined });
+      await api.applications.update(id, { [field]: value });
     } catch (err) {
       setApplications(previous);
       toast.error(err instanceof Error ? err.message : "Failed to assign document — reverted");
@@ -714,6 +745,9 @@ export function Pipeline() {
               </a>
             )}
           </div>
+          {detailApplication && (
+            <PrepContextPanel applicationId={detailApplication.id} defaultOpen={false} />
+          )}
           <Textarea
             value={notesDraft}
             onChange={(e) => setNotesDraft(e.target.value)}
