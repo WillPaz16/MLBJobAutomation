@@ -5,7 +5,11 @@
 // Greenhouse: find an org's board token from their careers page URL: boards.greenhouse.io/<boardToken>.
 export const greenhouseSources: { boardToken: string; organizationName: string }[] = [
   // MLB baseball ops/analytics-adjacent boards
+  // Phillies run two separate Greenhouse boards — business ops returned 0 live jobs when
+  // last checked (2026-08-11) but is kept since it's a real, distinct board that could post
+  // again; baseball ops is where roles like "Quantitative Analyst Associate" actually show up.
   { boardToken: "philliesbusinessops", organizationName: "Philadelphia Phillies" },
+  { boardToken: "philliesbaseballoperations", organizationName: "Philadelphia Phillies" },
   { boardToken: "clevelandguardiansbops", organizationName: "Cleveland Guardians" },
   { boardToken: "baltimoreorioles", organizationName: "Baltimore Orioles" },
   { boardToken: "athleticsbaseballops", organizationName: "Athletics" },
