@@ -145,6 +145,22 @@ describe("GET /api/postings", () => {
     expect(res.body[0].title).toBe("Non-team DS section role");
   });
 
+  it("filters by isInternship=true", async () => {
+    await createPosting({ isInternship: true, title: "Intern role" });
+    await createPosting({ isInternship: false, title: "Full-time role" });
+    const res = await request(app).get("/api/postings?isInternship=true");
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].title).toBe("Intern role");
+  });
+
+  it("filters by isInternship=false", async () => {
+    await createPosting({ isInternship: true, title: "Intern role" });
+    await createPosting({ isInternship: false, title: "Full-time role" });
+    const res = await request(app).get("/api/postings?isInternship=false");
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].title).toBe("Full-time role");
+  });
+
   it("composes workMode/region filters with an existing filter like category", async () => {
     await createPosting({ workMode: "REMOTE", region: "USA", category: "DATA_SCIENCE", title: "DS remote USA" });
     await createPosting({ workMode: "REMOTE", region: "USA", category: "BASEBALL_OPS", title: "Ops remote USA" });
@@ -441,6 +457,18 @@ describe("GET /api/postings/facets", () => {
     const res = await request(app).get("/api/postings/facets");
     expect(res.status).toBe(200);
     expect(res.body.mlbTeamCounts).toEqual({ true: 2, false: 1 });
+  });
+
+  it("returns internshipCounts with true/false counts, scoped active/not-dismissed like mlbTeamCounts", async () => {
+    await createPosting({ isInternship: true });
+    await createPosting({ isInternship: true });
+    await createPosting({ isInternship: false });
+    await createPosting({ isInternship: true, closedAt: new Date() });
+    await createPosting({ isInternship: true, dismissedAt: new Date() });
+
+    const res = await request(app).get("/api/postings/facets");
+    expect(res.status).toBe(200);
+    expect(res.body.internshipCounts).toEqual({ true: 2, false: 1 });
   });
 
   it("returns sourceSectionCounts keyed by exact section header, excluding nulls", async () => {

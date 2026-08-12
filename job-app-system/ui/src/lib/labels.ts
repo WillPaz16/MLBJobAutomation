@@ -73,6 +73,17 @@ export const WORK_MODE_FILTER_OPTIONS: { value: string; label: string }[] = [
   ...WORK_MODE_OPTIONS,
 ];
 
+// isInternship is a boolean (`Posting.isInternship`) surfaced as a 3-state filter control — same
+// "all" + real-value shape as WORK_MODE_FILTER_OPTIONS/REGION_FILTER_OPTIONS above, but the two
+// real values are the string-coerced booleans the API's "true"/"false" query-param pattern
+// expects (see api/src/routes/postings.ts), not an enum. Defaults to "all" (show both) per the
+// v7 plan's "kept separable" decision — internships aren't hidden by default.
+export const INTERNSHIP_FILTER_OPTIONS: { value: string; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "false", label: "Full-time only" },
+  { value: "true", label: "Internships only" },
+];
+
 // Region is a fixed 2-value enum surfaced by the API (`Posting.region`) — same hardcoded pattern.
 export const REGION_LABELS: Record<string, string> = {
   USA: "United States",

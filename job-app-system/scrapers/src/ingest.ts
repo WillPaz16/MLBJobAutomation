@@ -4,6 +4,7 @@ import { isLikelyDuplicateTitle } from "./dedupe.js";
 import { classifySeniority } from "./seniority.js";
 import { classifyWorkMode, classifyRegion } from "./location.js";
 import { isMlbOrg } from "./categorize.js";
+import { classifyIsInternship } from "./internship.js";
 
 // Consecutive scrape runs of an org's source that must miss a posting before it's considered
 // closed — not 1, so a single flaky/partial run can't wrongly close everything from that org.
@@ -77,6 +78,10 @@ export async function ingestPostings(sourceId: string, postings: NormalizedPosti
           // improve over time even though the org name itself never changes for an already-seen
           // posting.
           isMlbTeam: isMlbOrg(posting.organization),
+          // Same re-compute-every-scrape treatment, for the same reason: classifyIsInternship's
+          // regex can improve over time even though the title itself rarely changes for an
+          // already-seen posting.
+          isInternship: classifyIsInternship(posting.title),
           // Simple pass-through, like title/url — always overwrite from the latest adapter
           // output rather than fill-only/recompute, since it's just structural metadata about
           // which source section a row came from (not a derived classifier that can "improve").
@@ -106,6 +111,7 @@ export async function ingestPostings(sourceId: string, postings: NormalizedPosti
         workMode: classifyWorkMode(posting.location ?? null, posting.description ?? null),
         region: classifyRegion(posting.location ?? null),
         isMlbTeam: isMlbOrg(posting.organization),
+        isInternship: classifyIsInternship(posting.title),
         sourceSection: posting.sourceSection ?? null,
         url: posting.url,
         description: posting.description,

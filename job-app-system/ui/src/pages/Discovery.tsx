@@ -10,6 +10,7 @@ import {
   DISCOVERY_TAB_LABELS,
   DISCOVERY_TAB_ORDER,
   DISCOVERY_TAB_SOURCE_SECTIONS,
+  INTERNSHIP_FILTER_OPTIONS,
   REGION_FILTER_OPTIONS,
   REGION_LABELS,
   SENIORITY_FILTER_OPTIONS,
@@ -94,6 +95,7 @@ const FILTER_DEFAULTS: Record<string, string> = {
   workMode: "all",
   region: "all",
   minFit: "none",
+  isInternship: "all",
 };
 
 const FILTER_CHIP_LABELS: Record<string, (value: string) => string> = {
@@ -110,6 +112,7 @@ const FILTER_CHIP_LABELS: Record<string, (value: string) => string> = {
   workMode: (v) => `Work mode: ${WORK_MODE_LABELS[v] ?? v}`,
   region: (v) => `Region: ${REGION_LABELS[v] ?? v}`,
   minFit: (v) => `Fit: ${MIN_FIT_OPTIONS.find((o) => o.value === v)?.label ?? v}`,
+  isInternship: (v) => `Type: ${INTERNSHIP_FILTER_OPTIONS.find((o) => o.value === v)?.label ?? v}`,
 };
 
 function useDebounced<T>(value: T, delayMs: number): T {
@@ -219,6 +222,7 @@ export function Discovery() {
         minFit: filters.minFit === "none" ? undefined : Number(filters.minFit),
         isMlbTeam: tab === "baseball",
         sourceSection: tab === "baseball" ? undefined : DISCOVERY_TAB_SOURCE_SECTIONS[tab],
+        isInternship: filters.isInternship === "all" ? undefined : filters.isInternship,
         take: pageSize,
         skip: (page - 1) * pageSize,
       });
@@ -608,6 +612,23 @@ export function Discovery() {
             </SelectTrigger>
             <SelectContent>
               {REGION_FILTER_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <Label htmlFor="filter-internship" className="mb-1">
+            Type
+          </Label>
+          <Select value={filters.isInternship} onValueChange={(v) => setFilter("isInternship", v ?? "all")}>
+            <SelectTrigger id="filter-internship" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {INTERNSHIP_FILTER_OPTIONS.map((o) => (
                 <SelectItem key={o.value} value={o.value}>
                   {o.label}
                 </SelectItem>

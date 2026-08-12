@@ -62,6 +62,7 @@ export const api = {
       minFit?: number;
       isMlbTeam?: boolean;
       sourceSection?: string;
+      isInternship?: string;
       take?: number;
       skip?: number;
     }): Promise<{ postings: Posting[]; total: number }> => {
@@ -97,6 +98,7 @@ export const api = {
         regions: string[];
         mlbTeamCounts: { true: number; false: number };
         sourceSectionCounts: Record<string, number>;
+        internshipCounts: { true: number; false: number };
       }>("/postings/facets"),
     approve: (id: string) => request<Application>(`/postings/${id}/approve`, { method: "POST" }),
     remove: (id: string) => request<void>(`/postings/${id}`, { method: "DELETE" }),

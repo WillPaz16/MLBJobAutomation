@@ -76,6 +76,7 @@ postingsRouter.get(
       showDismissed,
       isMlbTeam,
       sourceSection,
+      isInternship,
     } = req.query;
     const { take, skip } = paginationSchema.parse(req.query);
 
@@ -111,6 +112,9 @@ postingsRouter.get(
       // Exact-match filter, same pattern as `organization` above — sourceSection is free-text
       // (the exact SimplifyJobs section header), not an enum, so no zod schema entry is needed.
       sourceSection: sourceSection ? (sourceSection as string) : undefined,
+      // Exact-match boolean filter, same "true"/"false" string-coercion pattern as isMlbTeam
+      // above.
+      isInternship: isInternship === "true" ? true : isInternship === "false" ? false : undefined,
       dismissedAt: showDismissed === "true" ? undefined : null,
       ...statusFilter,
       AND: [
@@ -216,7 +220,16 @@ postingsRouter.get(
 postingsRouter.get(
   "/facets",
   asyncHandler(async (_req, res) => {
-    const [seniorityRows, workModeRows, regionRows, mlbTeamTrueCount, mlbTeamFalseCount, sourceSectionRows] = await Promise.all([
+    const [
+      seniorityRows,
+      workModeRows,
+      regionRows,
+      mlbTeamTrueCount,
+      mlbTeamFalseCount,
+      sourceSectionRows,
+      internshipTrueCount,
+      internshipFalseCount,
+    ] = await Promise.all([
       prisma.posting.findMany({
         where: { seniority: { not: null } },
         select: { seniority: true },
@@ -250,6 +263,11 @@ postingsRouter.get(
         where: { sourceSection: { not: null }, closedAt: null, dismissedAt: null },
         _count: { sourceSection: true },
       }),
+      // Same scope as mlbTeamCounts/sourceSectionCounts above (active, not dismissed) — the
+      // isMlbTeam facet-scoping bug (one count using a different scope than its siblings) is a
+      // documented past mistake in this file; isInternship's counts deliberately match exactly.
+      prisma.posting.count({ where: { isInternship: true, closedAt: null, dismissedAt: null } }),
+      prisma.posting.count({ where: { isInternship: false, closedAt: null, dismissedAt: null } }),
     ]);
     const sourceSectionCounts: Record<string, number> = {};
     for (const row of sourceSectionRows) {
@@ -261,6 +279,7 @@ postingsRouter.get(
       regions: regionRows.map((r) => r.region),
       mlbTeamCounts: { true: mlbTeamTrueCount, false: mlbTeamFalseCount },
       sourceSectionCounts,
+      internshipCounts: { true: internshipTrueCount, false: internshipFalseCount },
     });
   })
 );

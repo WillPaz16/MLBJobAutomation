@@ -67,6 +67,11 @@ model Posting {
   // for the exact 3 values). Null for every other adapter, which has no such concept.
   sourceSection         String?
 
+  // Computed at ingest time, see scrapers/src/internship.ts's classifyIsInternship() — title-only
+  // signal (same reasoning as isMlbTeam above), kept separable from seniority (ENTRY also covers
+  // non-internship new-grad roles) so internships can be filtered independently.
+  isInternship          Boolean   @default(false)
+
   @@unique([sourceId, externalId])
   @@index([organization])
   @@index([sourceId, organization, closedAt])

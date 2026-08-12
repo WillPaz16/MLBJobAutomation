@@ -46,6 +46,7 @@ export interface Posting {
   dismissedAt: string | null;
   isMlbTeam: boolean;
   sourceSection: string | null;
+  isInternship: boolean;
   applications: Application[];
   // Present only when a CandidateProfile exists — see api/src/fitScore.ts.
   fitScore?: number | null;

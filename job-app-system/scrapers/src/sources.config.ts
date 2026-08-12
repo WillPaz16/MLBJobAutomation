@@ -22,6 +22,19 @@ export const greenhouseSources: { boardToken: string; organizationName: string }
   // exact name.
   { boardToken: "athleticsbusinessops", organizationName: "Athletics" },
   { boardToken: "athletics", organizationName: "Athletics" },
+  // Non-MLB employer boards, added deliberately and narrowly per the v7 plan's "3d. Employer
+  // boards" — Hudl and Catapult Sports are both sports-analytics employers whose full boards are
+  // small enough (~25-27 jobs each) not to flood Discovery, unlike the generic big-tech Greenhouse
+  // boards (Airbnb/Coinbase/Instacart/Robinhood/FanDuel/Palantir + Catapult Sports itself) removed
+  // in dcddaa8 in favor of the SimplifyJobs new-grad-list source. Catapult Sports was collateral in
+  // that blanket removal, not removed for its own content (closeRemovedSourceOrgs.ts's comment
+  // cites the new-grad-list replacement for the whole batch, with no Catapult-specific complaint
+  // about seniority/geography) — re-adding it now as its own small dedicated board, rather than
+  // folded into that generic batch, doesn't repeat the reasoning that got it removed.
+  // boards-api.greenhouse.io/v1/boards/hudl/jobs — 25 live jobs, curl-verified 2026-08-12.
+  { boardToken: "hudl", organizationName: "Hudl" },
+  // boards-api.greenhouse.io/v1/boards/catapultsports/jobs — 27 live jobs, curl-verified 2026-08-12.
+  { boardToken: "catapultsports", organizationName: "Catapult Sports" },
 ];
 
 // Lever: find an org's site slug from their careers page URL: jobs.lever.co/<site>.
