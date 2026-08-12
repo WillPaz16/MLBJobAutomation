@@ -15,11 +15,25 @@ import { runDailyDiscovery, startScheduler } from "./scheduler.js";
 
 export function createApp() {
   const app = express();
-  // exposedHeaders: the dev UI reaches this via Vite's same-origin proxy (no CORS involved there),
-  // but a browser fetch from a genuinely cross-origin caller can't read custom response headers
-  // like X-Total-Count without this — cheap to set correctly now rather than only working by
-  // accident of the current dev setup.
-  app.use(cors({ exposedHeaders: ["X-Total-Count"] }));
+  // Origin-allowlisted, NOT wildcard. This used to be a bare `cors()`, which answers
+  // `Access-Control-Allow-Origin: *` to every caller. That was harmless while the DB only held
+  // public job postings, but ApplicantIdentity stores real PII (date of birth, home address, EEO
+  // self-identification) — with a wildcard, any page in any open browser tab could
+  // `fetch("http://localhost:4000/api/identity")` and read it with no user gesture at all.
+  //
+  // Requests with NO Origin header are allowed: that's curl, the tailor-application skill, and the
+  // scheduler's in-process calls — none of which are the browser-attack shape. A request that
+  // carries an Origin we don't recognize is exactly that shape, and gets no ACAO header back.
+  //
+  // The UI never actually needs this: Vite proxies /api same-origin in dev (see ui/vite.config.ts),
+  // so the allowlist exists for correctness rather than to make the app work.
+  const ALLOWED_ORIGINS = new Set(["http://localhost:5173", "http://127.0.0.1:5173"]);
+  app.use(
+    cors({
+      origin: (origin, cb) => cb(null, !origin || ALLOWED_ORIGINS.has(origin)),
+      exposedHeaders: ["X-Total-Count"],
+    })
+  );
   app.use(express.json());
 
   app.use("/api/postings", postingsRouter);

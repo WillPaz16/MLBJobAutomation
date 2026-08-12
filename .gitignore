@@ -10,6 +10,12 @@ build/
 .claude/scheduled_tasks.lock
 job-app-system/api/data/*.db
 job-app-system/api/data/*.db-journal
+# WAL/SHM too: if SQLite is ever in WAL mode, recent writes live in these sidecar files rather
+# than the .db itself — and jobs.db now holds real PII (ApplicantIdentity: DOB, address, EEO).
+# Without these lines they're tracked-eligible, so freshly-entered personal data could be
+# committed even though the database file itself is ignored.
+job-app-system/api/data/*.db-wal
+job-app-system/api/data/*.db-shm
 job-app-system/api/data/backups/
 job-app-system/api/data/documents/
 job-app-system/api/prisma/test.db
