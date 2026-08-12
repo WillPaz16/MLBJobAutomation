@@ -29,7 +29,7 @@ export function Nav() {
   const location = useLocation();
 
   return (
-    <nav className="sticky top-0 z-40 flex items-center gap-1 border-b bg-background/80 px-6 py-3 backdrop-blur">
+    <nav className="sticky top-0 z-40 flex items-center gap-1 border-b bg-background/80 px-6 py-3 shadow-elev-1 backdrop-blur">
       <span className="mr-6 font-semibold text-foreground">Job Pipeline</span>
 
       <div className="hidden gap-1 sm:flex">

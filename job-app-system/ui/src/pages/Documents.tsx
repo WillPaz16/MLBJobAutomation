@@ -6,6 +6,7 @@ import type { Document, DocumentDetail } from "../api/types";
 import { ErrorState } from "@/components/states/ErrorState";
 import { EmptyState } from "@/components/states/EmptyState";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { useEntrance } from "@/lib/useEntrance";
 import { PageHeader, PageLayout } from "@/components/PageLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,6 +37,7 @@ export function Documents() {
   const [scanning, setScanning] = useState(false);
   const [usageById, setUsageById] = useState<Record<string, DocumentDetail>>({});
   const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
+  const entrance = useEntrance();
 
   async function load() {
     setLoading(true);
@@ -191,6 +193,7 @@ export function Documents() {
             usageById={usageById}
             onDelete={setConfirmDeleteId}
             onPreview={setPreviewDoc}
+            entrance={entrance}
           />
           <DocumentList
             title="Cover Letters"
@@ -199,6 +202,7 @@ export function Documents() {
             usageById={usageById}
             onDelete={setConfirmDeleteId}
             onPreview={setPreviewDoc}
+            entrance={entrance}
           />
         </div>
       )}
@@ -252,6 +256,7 @@ function DocumentList({
   usageById,
   onDelete,
   onPreview,
+  entrance,
 }: {
   title: string;
   icon: React.ComponentType<{ className?: string }>;
@@ -259,6 +264,7 @@ function DocumentList({
   usageById: Record<string, DocumentDetail>;
   onDelete: (id: string) => void;
   onPreview: (d: Document) => void;
+  entrance: (index: number) => { className?: string; style?: React.CSSProperties };
 }) {
   return (
     <div>
@@ -270,13 +276,17 @@ function DocumentList({
         <EmptyState icon={FileText} title="None yet" />
       ) : (
         <ul className="space-y-2">
-          {documents.map((d) => {
+          {documents.map((d, index) => {
             const usage = usageById[d.id];
             const exists = d.exists ?? true;
+            const { className: entranceClassName, style: entranceStyle } = entrance(index);
             return (
               <li
                 key={d.id}
-                className="flex items-center justify-between gap-2 rounded-md border p-2 text-sm"
+                style={entranceStyle}
+                className={`flex items-center justify-between gap-2 rounded-md border p-2 text-sm ${
+                  entranceClassName ?? ""
+                }`}
               >
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">

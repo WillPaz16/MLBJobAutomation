@@ -41,8 +41,8 @@
   --elev-1: 0 1px 2px oklch(0 0 0 / 6%), 0 1px 1px oklch(0 0 0 / 4%);
   --elev-2: 0 2px 6px oklch(0 0 0 / 8%), 0 1px 2px oklch(0 0 0 / 6%);
   --elev-3: 0 8px 24px oklch(0 0 0 / 12%), 0 2px 6px oklch(0 0 0 / 8%);
-  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
-  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-out-quint-raw: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring-raw: cubic-bezier(0.34, 1.56, 0.64, 1);
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.22 0.05 255);
@@ -67,6 +67,12 @@ body {
   --shadow-elev-1: var(--elev-1);
   --shadow-elev-2: var(--elev-2);
   --shadow-elev-3: var(--elev-3);
+  /* These were plain :root custom properties only — not mapped into @theme inline, so
+     `ease-out-quint`/`ease-spring` Tailwind utilities generated nothing (the same failure mode
+     as the onSelect-vs-onClick Base UI bug: looks wired up, silently no-ops). Mapping them here
+     is what makes `duration-200 ease-out-quint` actually emit a transition-timing-function. */
+  --ease-out-quint: var(--ease-out-quint-raw);
+  --ease-spring: var(--ease-spring-raw);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -192,6 +198,26 @@ body {
       transparent 1px,
       transparent 12px
     );
+  }
+
+  /* 3px navy->red leading edge, reserved for exactly three places (see CLAUDE.md/plan): Strong-fit
+     Discovery rows, Pipeline's OFFER/INTERVIEW columns, and the Compatibility calibration card.
+     Stops mirror .text-gradient-brand's exact oklch values (light: 0.32/0.09/258 -> 0.55/0.19/22;
+     dark: 0.72/0.1/258 -> 0.68/0.17/22) so the two treatments read as the same brand gradient. */
+  .edge-brand {
+    position: relative;
+  }
+  .edge-brand::before {
+    content: "";
+    position: absolute;
+    inset-inline-start: 0;
+    inset-block: 0;
+    width: 3px;
+    border-radius: inherit;
+    background: linear-gradient(180deg, oklch(0.32 0.09 258), oklch(0.55 0.19 22));
+  }
+  .dark .edge-brand::before {
+    background: linear-gradient(180deg, oklch(0.72 0.1 258), oklch(0.68 0.17 22));
   }
 }
 

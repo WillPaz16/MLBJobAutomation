@@ -20,6 +20,7 @@ import {
   type DiscoveryTab,
 } from "@/lib/labels";
 import { useFilterParams } from "@/hooks/useFilterParams";
+import { useEntrance } from "@/lib/useEntrance";
 import { Pagination } from "@/components/Pagination";
 import { ErrorState } from "@/components/states/ErrorState";
 import { EmptyState } from "@/components/states/EmptyState";
@@ -153,6 +154,7 @@ async function runInBatches<T, R>(
 
 export function Discovery() {
   const { filters, setFilter, page, setPage, activeFilters, clearFilters } = useFilterParams(FILTER_DEFAULTS);
+  const entrance = useEntrance();
 
   const [postings, setPostings] = useState<Posting[]>([]);
   const [organizations, setOrganizations] = useState<string[]>([]);
@@ -854,28 +856,27 @@ export function Discovery() {
             icon={Search}
             title="No postings match your filters"
             description="Try loosening a filter or clear them all to see the full feed."
-            action={
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  setLocationInput("");
-                  setSearchInput("");
-                  clearFilters();
-                }}
-              >
-                Clear all filters
-              </Button>
-            }
+            onClear={() => {
+              setLocationInput("");
+              setSearchInput("");
+              clearFilters();
+            }}
             variant="no-matches"
           />
         )
       ) : (
         <div className="grid gap-3">
-          {postings.map((p) => {
+          {postings.map((p, index) => {
             const overflowSkills = (p.matchedSkills ?? []).slice(4);
+            const { className: entranceClassName, style: entranceStyle } = entrance(index);
             return (
-              <Card key={p.id}>
+              <Card
+                key={p.id}
+                style={entranceStyle}
+                className={`hover:shadow-elev-2 transition-shadow duration-200 ease-out-quint ${
+                  entranceClassName ?? ""
+                } ${p.fitTier === "Strong" ? "edge-brand" : ""}`}
+              >
                 <CardHeader>
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3">

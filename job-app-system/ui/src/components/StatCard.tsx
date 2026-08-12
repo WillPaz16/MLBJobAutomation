@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -10,20 +11,27 @@ export function StatCard({
   to,
   icon: Icon,
   hint,
+  chart,
 }: {
   label: string;
   value: string | number;
   to?: string;
   icon?: React.ComponentType<{ className?: string }>;
   hint?: string;
+  chart?: ReactNode;
 }) {
   const content = (
-    <Card className="animate-in fade-in slide-in-from-bottom-1 duration-300">
+    <Card
+      className={`animate-in fade-in slide-in-from-bottom-1 duration-300 ${
+        to ? "hover:shadow-elev-2 transition-shadow duration-200 ease-out-quint" : ""
+      }`}
+    >
       <CardContent className="flex items-start justify-between gap-2">
         <div>
           <div className="text-xs text-muted-foreground">{label}</div>
           <div className="text-2xl font-semibold tabular text-foreground">{value}</div>
           {hint && <div className="mt-0.5 text-xs text-muted-foreground">{hint}</div>}
+          {chart && <div className="mt-1.5">{chart}</div>}
         </div>
         {Icon && <Icon className="size-5 text-primary" />}
       </CardContent>

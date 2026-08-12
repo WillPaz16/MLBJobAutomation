@@ -33,6 +33,7 @@ import { api } from "../api/client";
 import type { Application, ApplicationStage, Document } from "../api/types";
 import { htmlToPlainText, relativeTime } from "@/lib/utils";
 import { PrepContextPanel } from "@/components/PrepContextPanel";
+import { useEntrance } from "@/lib/useEntrance";
 import { CATEGORY_FILTER_OPTIONS, CATEGORY_LABELS, SOURCE_LABELS, STAGE_LABELS } from "@/lib/labels";
 import { ErrorState } from "@/components/states/ErrorState";
 import { EmptyState } from "@/components/states/EmptyState";
@@ -139,6 +140,7 @@ function CardBody({
   onMoveStage,
   onOpenDetail,
   dragHandleProps,
+  isDragOverlay = false,
 }: {
   application: Application;
   documents: Document[];
@@ -148,6 +150,9 @@ function CardBody({
   onMoveStage: (stage: ApplicationStage) => void;
   onOpenDetail: () => void;
   dragHandleProps?: { attributes?: object; listeners?: object };
+  /** True only for the dnd-kit DragOverlay clone — gets shadow-elev-3 instead of the normal
+      hover-only elevation, since it's already "lifted" while being dragged. */
+  isDragOverlay?: boolean;
 }) {
   const resumes = documents.filter((d) => d.kind === "resume");
   const coverLetters = documents.filter((d) => d.kind === "cover_letter");
@@ -155,7 +160,13 @@ function CardBody({
   const category = application.posting?.category ?? "OTHER";
 
   return (
-    <Card className="gap-2 py-3 shadow-sm">
+    <Card
+      className={`gap-2 py-3 ${
+        isDragOverlay
+          ? "shadow-elev-3"
+          : "hover:shadow-elev-2 transition-shadow duration-200 ease-out-quint"
+      }`}
+    >
       <CardHeader className="flex-row items-start gap-1 px-3">
         <button
           className="mt-0.5 cursor-grab touch-none text-muted-foreground hover:text-foreground"
@@ -350,6 +361,10 @@ function SortableCard(props: Parameters<typeof CardBody>[0] & { id: string }) {
   );
 }
 
+// OFFER/INTERVIEW are the two stages that matter most to see at a glance — edge-brand marks
+// them the same way Strong-fit Discovery rows are marked, one of the plan's exactly-three uses.
+const EDGE_BRAND_STAGES: ApplicationStage[] = ["OFFER", "INTERVIEW"];
+
 function Column({
   stage,
   applications,
@@ -361,6 +376,7 @@ function Column({
   onAssignDoc,
   onMoveStage,
   onOpenDetail,
+  entranceProps,
 }: {
   stage: ApplicationStage;
   applications: Application[];
@@ -372,19 +388,22 @@ function Column({
   onAssignDoc: (id: string, field: "resumeDocId" | "coverDocId", docId: string) => void;
   onMoveStage: (id: string, stage: ApplicationStage) => void;
   onOpenDetail: (id: string) => void;
+  entranceProps: { className?: string; style?: React.CSSProperties };
 }) {
   // The droppable target stays mounted (and its id/ref unchanged) whether collapsed or
   // expanded, so cards can still be dropped on a collapsed column.
   const { setNodeRef, isOver } = useDroppable({ id: stage });
   const ids = applications.map((a) => a.id);
+  const edgeBrand = EDGE_BRAND_STAGES.includes(stage) ? "edge-brand" : "";
 
   if (collapsed) {
     return (
       <div
         ref={setNodeRef}
+        style={entranceProps.style}
         className={`flex min-h-[300px] w-12 shrink-0 flex-col items-center gap-2 rounded-lg border bg-muted/30 p-2 ${
           isOver ? "ring-2 ring-primary/40" : ""
-        }`}
+        } ${entranceProps.className ?? ""} ${edgeBrand}`}
       >
         <button
           onClick={onToggleCollapse}
@@ -405,9 +424,10 @@ function Column({
   return (
     <div
       ref={setNodeRef}
+      style={entranceProps.style}
       className={`flex min-h-[300px] w-72 shrink-0 flex-col gap-2 rounded-lg border bg-muted/30 p-2 ${
         isOver ? "ring-2 ring-primary/40" : ""
-      }`}
+      } ${entranceProps.className ?? ""} ${edgeBrand}`}
     >
       <div className="mb-1 flex items-center justify-between px-1 pt-1">
         <button
@@ -455,6 +475,8 @@ export function Pipeline() {
   const [collapsedStages, setCollapsedStages] = useState<Set<ApplicationStage>>(
     () => new Set(DEFAULT_COLLAPSED_STAGES)
   );
+
+  const entrance = useEntrance();
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -666,7 +688,7 @@ export function Pipeline() {
       <div className="relative overflow-x-auto">
         <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
           <div className="flex gap-4">
-            {STAGES.map((stage) => (
+            {STAGES.map((stage, index) => (
               <Column
                 key={stage}
                 stage={stage}
@@ -679,6 +701,7 @@ export function Pipeline() {
                 onAssignDoc={onAssignDoc}
                 onMoveStage={moveStage}
                 onOpenDetail={openDetail}
+                entranceProps={entrance(index)}
               />
             ))}
           </div>
@@ -693,6 +716,7 @@ export function Pipeline() {
                   onAssignDoc={() => {}}
                   onMoveStage={() => {}}
                   onOpenDetail={() => {}}
+                  isDragOverlay
                 />
               </div>
             )}

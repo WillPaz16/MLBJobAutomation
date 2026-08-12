@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { NotificationBanner } from "@/components/NotificationBanner";
 import { StatCard } from "@/components/StatCard";
+import { Sparkline } from "@/components/charts/Sparkline";
 import { prettifyLabel } from "@/lib/labels";
 
 function greeting(): string {
@@ -29,11 +30,13 @@ function StatSlot({
   to,
   state,
   render,
+  chart,
 }: {
   label: string;
   to: string;
   state: Loadable<unknown>;
   render: () => string | number;
+  chart?: React.ReactNode;
 }) {
   if (state.status === "loading") {
     return <Skeleton className="h-20 rounded-lg" />;
@@ -50,7 +53,7 @@ function StatSlot({
       </Card>
     );
   }
-  return <StatCard label={label} value={render()} to={to} />;
+  return <StatCard label={label} value={render()} to={to} chart={chart} />;
 }
 
 function QuickLink({
@@ -99,6 +102,10 @@ export function Home() {
   const [activePostings, setActivePostings] = useState<Loadable<number>>({ status: "loading" });
   const [applications, setApplications] = useState<Loadable<Application[]>>({ status: "loading" });
   const [summary, setSummary] = useState<Loadable<AnalyticsSummary>>({ status: "loading" });
+  // Only chart on Home per the plan (Discovery/Pipeline/Documents/Prep stay chart-free working
+  // surfaces) — a small sparkline off the existing /timeseries "discovered" weekly bucket, purely
+  // decorative/best-effort so a failure here never blocks the rest of the page.
+  const [discoveredSeries, setDiscoveredSeries] = useState<number[] | null>(null);
 
   useEffect(() => {
     api.postings
@@ -113,6 +120,12 @@ export function Home() {
       .summary()
       .then((value) => setSummary({ status: "ok", value }))
       .catch((err) => setSummary({ status: "error", message: errorMessage(err) }));
+    api.analytics
+      .timeseries({ weeks: 12 })
+      .then((value) => setDiscoveredSeries(value.discovered))
+      .catch(() => {
+        // Sparkline is decorative — the stat itself still renders fine without it.
+      });
   }, []);
 
   const applicationList = applications.status === "ok" ? applications.value : null;
@@ -166,6 +179,11 @@ export function Home() {
             to="/discovery"
             state={activePostings}
             render={() => (activePostings.status === "ok" ? activePostings.value : "—")}
+            chart={
+              discoveredSeries && discoveredSeries.some((v) => v > 0) ? (
+                <Sparkline values={discoveredSeries} width={120} height={28} label="Postings discovered, last 12 weeks" />
+              ) : undefined
+            }
           />
           <StatSlot
             label="Active applications"

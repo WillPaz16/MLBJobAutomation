@@ -14,6 +14,7 @@ import { ErrorState } from "@/components/states/ErrorState";
 import { EmptyState } from "@/components/states/EmptyState";
 import { PageHeader, PageLayout } from "@/components/PageLayout";
 import { PrepContextPanel } from "@/components/PrepContextPanel";
+import { useEntrance } from "@/lib/useEntrance";
 
 const STALE_AFTER_DAYS = 7;
 
@@ -29,6 +30,7 @@ export function Prep() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const entrance = useEntrance();
 
   async function load() {
     setLoading(true);
@@ -112,11 +114,11 @@ export function Prep() {
         />
       ) : (
         <div className="grid gap-3">
-          {queue.map((app) => {
+          {queue.map((app, index) => {
             const age = daysSince(app.createdAt);
             const stale = age > STALE_AFTER_DAYS;
             return (
-              <Card key={app.id}>
+              <Card key={app.id} {...entrance(index)}>
                 <CardContent className="flex items-center justify-between gap-3">
                   <div className="flex items-start gap-3">
                     <div>

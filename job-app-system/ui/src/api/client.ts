@@ -94,6 +94,7 @@ export const api = {
       const total = Number(res.headers.get("X-Total-Count") ?? postings.length);
       return { postings, total };
     },
+    get: (id: string) => request<Posting>(`/postings/${id}`),
     organizations: () => request<string[]>("/postings/organizations"),
     facets: () =>
       request<{
