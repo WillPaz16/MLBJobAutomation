@@ -351,6 +351,60 @@ describe("GET /api/postings fit scoring", () => {
     expect(res.status).toBe(200);
     expect(res.body.map((p: { id: string }) => p.id)).toEqual([older.id, newer.id]);
   });
+
+  it("returns fitScoreRaw alongside fitScore, and the two differ once normalization is in play", async () => {
+    await request(app).put("/api/profile").send({ skills: "python, sql, r" });
+    await createPosting({ title: "No Match Role", description: "unrelated" });
+    await createPosting({ title: "Full Match Role", description: "python sql r" });
+    await createPosting({ title: "Partial Match Role", description: "python only" });
+
+    const res = await request(app).get("/api/postings");
+    expect(res.status).toBe(200);
+    for (const posting of res.body) {
+      expect(typeof posting.fitScoreRaw).toBe("number");
+    }
+    // The middle-scoring posting is the clearest case where percentile (cohort-relative) and raw
+    // (formula-absolute) provably diverge — proves normalization is actually applied, not just a
+    // relabeling of the same number.
+    const partial = res.body.find((p: { title: string }) => p.title === "Partial Match Role");
+    expect(partial.fitScore).not.toBe(partial.fitScoreRaw);
+  });
+
+  it("normalizes fitScore per-tab: the same raw-scoring posting ranks differently depending on which cohort (isMlbTeam tab) it's compared against", async () => {
+    await request(app).put("/api/profile").send({ skills: "python, sql, r" });
+
+    // Baseball tab: mostly low-raw-scoring postings, so a partial-match posting ranks near the top
+    // of its own cohort.
+    await createPosting({ title: "No Match A", description: "unrelated", isMlbTeam: true });
+    await createPosting({ title: "No Match B", description: "unrelated", isMlbTeam: true });
+    const baseballPartial = await createPosting({
+      title: "Partial Match Role",
+      description: "python only",
+      isMlbTeam: true,
+    });
+
+    // Non-baseball tab: mostly high-raw-scoring postings, so an identically-scored partial-match
+    // posting ranks near the bottom of ITS cohort instead.
+    await createPosting({ title: "Full Match A", description: "python sql r", isMlbTeam: false });
+    await createPosting({ title: "Full Match B", description: "python sql r", isMlbTeam: false });
+    const nonBaseballPartial = await createPosting({
+      title: "Partial Match Role",
+      description: "python only",
+      isMlbTeam: false,
+    });
+
+    const baseballRes = await request(app).get("/api/postings?isMlbTeam=true");
+    const nonBaseballRes = await request(app).get("/api/postings?isMlbTeam=false");
+
+    const baseballScored = baseballRes.body.find((p: { id: string }) => p.id === baseballPartial.id);
+    const nonBaseballScored = nonBaseballRes.body.find((p: { id: string }) => p.id === nonBaseballPartial.id);
+
+    // Same raw score (identical title/description) in both cohorts...
+    expect(baseballScored.fitScoreRaw).toBe(nonBaseballScored.fitScoreRaw);
+    // ...but a different normalized fitScore, because each was ranked against its own tab's cohort.
+    expect(baseballScored.fitScore).not.toBe(nonBaseballScored.fitScore);
+    expect(baseballScored.fitScore).toBeGreaterThan(nonBaseballScored.fitScore);
+  });
 });
 
 describe("GET /api/postings/organizations", () => {

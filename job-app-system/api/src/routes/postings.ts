@@ -3,13 +3,13 @@ import { createHash } from "crypto";
 import { prisma } from "../db.js";
 import { asyncHandler, HttpError } from "../asyncHandler.js";
 import { createManualPostingSchema, paginationSchema, updatePostingSchema } from "../validation.js";
-import { computeFitScore } from "../fitScore.js";
+import { computeFitScore, fitTier } from "../fitScore.js";
 
 export const postingsRouter = Router();
 
 // posting rows carry more fields than FitScorePosting needs — this keeps computeFitScore's
 // signature narrow/pure while still accepting the richer Prisma result shape.
-function withFitScore<T extends { title: string; organization: string; category: string; location: string | null; description: string | null }>(
+function withRawFitScore<T extends { title: string; organization: string; category: string; location: string | null; description: string | null }>(
   posting: T,
   profile: {
     skills: string;
@@ -18,10 +18,35 @@ function withFitScore<T extends { title: string; organization: string; category:
     locationKeywords: string | null;
     excludeKeywords: string | null;
   } | null
-): T & { fitScore?: number; fitTier?: string; matchedSkills?: string[]; reasons?: unknown[]; evidence?: unknown[] } {
+): T & { fitScoreRaw?: number; fitTier?: string; matchedSkills?: string[]; reasons?: unknown[]; evidence?: unknown[] } {
   if (!profile) return posting;
   const { score, tier, matchedSkills, reasons, evidence } = computeFitScore(posting, profile);
-  return { ...posting, fitScore: score, fitTier: tier, matchedSkills, reasons, evidence };
+  return { ...posting, fitScoreRaw: score, fitTier: tier, matchedSkills, reasons, evidence };
+}
+
+// Percentile-rank normalization within a cohort: each posting's raw score is mapped to the
+// percentage of the cohort it scores >= (0-100). Computed once across the FULL cohort (not a
+// single page) so percentiles stay meaningful across pages of the same request.
+function percentileRank(sortedAsc: number[], value: number): number {
+  if (sortedAsc.length === 0) return 0;
+  if (sortedAsc.length === 1) return 100;
+  // Count of values <= this one, minus itself, gives rank among the rest.
+  let countBelowOrEqual = 0;
+  for (const v of sortedAsc) {
+    if (v <= value) countBelowOrEqual++;
+  }
+  return Math.round((countBelowOrEqual / sortedAsc.length) * 100);
+}
+
+function withNormalizedFitScore<T extends { fitScoreRaw?: number }>(
+  posting: T,
+  rawScoresSortedAsc: number[]
+): T & { fitScore?: number } {
+  if (posting.fitScoreRaw === undefined) return { ...posting, fitScore: undefined };
+  const percentile = percentileRank(rawScoresSortedAsc, posting.fitScoreRaw);
+  // fitTier thresholds apply to the NORMALIZED (percentile) score, not the raw formula output —
+  // that's what makes "Strong" reachable in every tab instead of only the highest-raw-scoring one.
+  return { ...posting, fitScore: percentile, fitTier: fitTier(percentile) };
 }
 
 const SORT_OPTIONS = {
@@ -98,18 +123,28 @@ postingsRouter.get(
 
     const profile = await prisma.candidateProfile.findUnique({ where: { id: "profile" } });
 
-    if (sort === "fit_desc" || hasMinFit) {
-      // Fit score isn't a DB column, so it can't go through Prisma's orderBy/where — fetch every
-      // matching row (no take/skip here), score in JS, optionally filter by minFit, sort
-      // according to whatever `sort` was actually requested (defaulting to discoveredAt_desc,
-      // same as the non-scored path — minFit doesn't force fit_desc sorting), then slice the
-      // page ourselves. X-Total-Count reflects the post-minFit-filter count, not the unfiltered
-      // total, since that's the count that actually matches the request.
+    // Fit score isn't a DB column, so it can't go through Prisma's orderBy/where. Per the v7
+    // per-tab-normalization plan, `fitScore` returned to the client is a PERCENTILE rank within
+    // the current request's own cohort (whatever `where` already scopes to — typically an
+    // isMlbTeam/sourceSection tab, or the whole unscoped set if neither is present). A single
+    // page can't be normalized against itself — percentiles across pages would be meaningless —
+    // so whenever a profile exists at all, we fetch the FULL matching cohort, compute raw scores,
+    // derive percentiles across that whole cohort, THEN filter/sort/paginate. This subsumes what
+    // used to be the special-cased sort=fit_desc/minFit-only path; that path is now just "the
+    // profile-exists path" unconditionally, since normalization always needs the full cohort
+    // regardless of what sort/filter is actually requested.
+    if (profile) {
       const allPostings = await prisma.posting.findMany({
         where,
         include: { source: true, applications: true, possibleDuplicateOf: true },
       });
-      let scored = allPostings.map((p) => withFitScore(p, profile));
+      const rawScored = allPostings.map((p) => withRawFitScore(p, profile));
+      const rawScoresSortedAsc = rawScored
+        .map((p) => p.fitScoreRaw)
+        .filter((v): v is number => v !== undefined)
+        .sort((a, b) => a - b);
+      let scored = rawScored.map((p) => withNormalizedFitScore(p, rawScoresSortedAsc));
+
       if (hasMinFit) {
         scored = scored.filter((p) => (p.fitScore ?? 0) >= parsedMinFit!);
       }
@@ -131,6 +166,8 @@ postingsRouter.get(
           return direction === "asc" ? cmp : -cmp;
         });
       }
+      // X-Total-Count reflects the post-minFit-filter count, not the unfiltered cohort total,
+      // since that's the count that actually matches the request.
       const total = scored.length;
       const start = skip ?? 0;
       const end = take !== undefined ? start + take : undefined;
@@ -156,7 +193,7 @@ postingsRouter.get(
     // Exposed via a header, not the body, so the response stays a bare array — every existing
     // consumer/test asserting on res.body directly keeps working unchanged.
     res.set("X-Total-Count", String(total));
-    res.json(postings.map((p) => withFitScore(p, profile)));
+    res.json(postings);
   })
 );
 
@@ -239,7 +276,19 @@ postingsRouter.get(
       prisma.candidateProfile.findUnique({ where: { id: "profile" } }),
     ]);
     if (!posting) throw new HttpError(404, "Posting not found");
-    res.json(withFitScore(posting, profile));
+    if (!profile) {
+      res.json(posting);
+      return;
+    }
+    // Single-posting fetch has no natural "cohort" to normalize against the way the list view
+    // does — rather than doing a second full-cohort fetch just to rank one row, we score it
+    // against itself: its raw score is also its own 100th-percentile within a cohort of one.
+    // This is the simpler of the two reasonable options and matches how the detail view is
+    // actually used (showing what the posting itself looks like, not how it ranks against
+    // everything else in its tab).
+    const scored = withRawFitScore(posting, profile);
+    const result = withNormalizedFitScore(scored, scored.fitScoreRaw !== undefined ? [scored.fitScoreRaw] : []);
+    res.json(result);
   })
 );
 

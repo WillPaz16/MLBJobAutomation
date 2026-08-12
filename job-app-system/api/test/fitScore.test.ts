@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeFitScore, fitTier } from "../src/fitScore.js";
+import { computeFitScore, countSkillMatches, fitTier } from "../src/fitScore.js";
 
 describe("computeFitScore", () => {
   it("is independent of profile size — adding unmatched secondary skills never changes the score", () => {
@@ -28,6 +28,13 @@ describe("computeFitScore", () => {
     expect(match.matchedSkills).toEqual(["r shiny"]);
   });
 
+  it("does not match a bare single-character skill inside 'R&D' (single-char lookahead guard)", () => {
+    const rndPosting = { title: "Director of R&D", organization: "Cubs" };
+    const result = computeFitScore(rndPosting, { skills: "r" });
+    expect(result.matchedSkills).toEqual([]);
+    expect(countSkillMatches("Director of R&D", "r")).toBe(0);
+  });
+
   it("escapes regex metacharacters in skill terms instead of throwing or matching as regex", () => {
     const posting = {
       title: "Software Engineer",
@@ -39,11 +46,35 @@ describe("computeFitScore", () => {
     expect(result.matchedSkills.sort()).toEqual(["c++", "stuff+"]);
   });
 
+  it("scores a Mets-shaped Baseball Analytics data scientist role high (top role tier + saturated core skill matches)", () => {
+    // The formula's theoretical ceiling is roleSignal(42) + titlePoints(<12) + descPoints(<22) +
+    // locationSignal(6) — a strongly-matching real posting should land well up in that range, not
+    // hardcoded to the plan's illustrative example (the exact regex wording here may differ
+    // slightly from the plan's).
+    const profile = {
+      coreSkills: "python, sql, statistics",
+      skills: "modeling, baseball",
+      locationKeywords: "new york",
+    };
+
+    const posting = {
+      title: "Senior Data Scientist, Baseball Analytics — Python, SQL, Statistics",
+      organization: "New York Mets",
+      category: "BASEBALL_RND",
+      location: "New York, NY",
+      description:
+        "Use Python and SQL and statistics to build statistical models for player development. " +
+        "Python python python python python. Sql sql sql sql sql. Statistics statistics statistics statistics statistics.",
+    };
+
+    const result = computeFitScore(posting, profile);
+    expect(result.score).toBeGreaterThanOrEqual(75);
+  });
+
   it("separates a real R&D analyst role from a same-org Accounting Manager role", () => {
     const profile = {
       coreSkills: "python, sql, statistics",
       skills: "modeling, baseball",
-      preferredCategories: "baseball_rnd",
     };
 
     const rndPosting = {
@@ -62,8 +93,40 @@ describe("computeFitScore", () => {
     const rnd = computeFitScore(rndPosting, profile);
     const accounting = computeFitScore(accountingPosting, profile);
 
-    expect(rnd.score).toBeGreaterThanOrEqual(60);
-    expect(accounting.score).toBeLessThanOrEqual(15);
+    expect(rnd.score).toBeGreaterThan(accounting.score);
+    expect(accounting.score).toBeLessThanOrEqual(20);
+  });
+
+  it("graduated role tiers: a title matching only the lowest tier scores lower than one matching the highest tier, all else equal", () => {
+    const lowTierPosting = { title: "Coordinator", organization: "Cubs" };
+    const highTierPosting = { title: "Data Scientist", organization: "Cubs" };
+    const profile = { skills: "" };
+
+    const low = computeFitScore(lowTierPosting, profile);
+    const high = computeFitScore(highTierPosting, profile);
+    expect(high.score).toBeGreaterThan(low.score);
+  });
+
+  it("frequency-damps description matches: six mentions score higher than one, and six equals eight (the cap)", () => {
+    const profile = { skills: "python" };
+    const one = computeFitScore(
+      { title: "Analyst", organization: "Cubs", description: "python" },
+      profile
+    );
+    const six = computeFitScore(
+      { title: "Analyst", organization: "Cubs", description: "python python python python python python" },
+      profile
+    );
+    const eight = computeFitScore(
+      {
+        title: "Analyst",
+        organization: "Cubs",
+        description: "python python python python python python python python",
+      },
+      profile
+    );
+    expect(six.score).toBeGreaterThan(one.score);
+    expect(eight.score).toBe(six.score);
   });
 
   it("skill contribution is monotonically non-decreasing as more skills match", () => {
@@ -96,7 +159,7 @@ describe("computeFitScore", () => {
 
     const high = computeFitScore(
       { title: "Baseball Analyst", organization: "Cubs", category: "BASEBALL_RND", location: "Chicago" },
-      { coreSkills: "baseball, analytics", preferredCategories: "baseball_rnd", locationKeywords: "chicago" }
+      { coreSkills: "baseball, analytics", locationKeywords: "chicago" }
     );
     expect(high.score).toBeLessThanOrEqual(100);
   });
@@ -110,7 +173,7 @@ describe("computeFitScore", () => {
         location: "Chicago",
         description: "Use python for statistical modeling.",
       },
-      { coreSkills: "python", preferredCategories: "baseball_rnd", locationKeywords: "chicago", skills: "" }
+      { coreSkills: "python", locationKeywords: "chicago", skills: "" }
     );
     expect(Array.isArray(result.reasons)).toBe(true);
     for (const reason of result.reasons) {
@@ -130,6 +193,14 @@ describe("computeFitScore", () => {
     const result = computeFitScore({ title: "Usher", organization: "Cubs" }, { skills: "python, sql" });
     expect(result.score).toBe(0);
     expect(result.matchedSkills).toEqual([]);
+  });
+});
+
+describe("countSkillMatches", () => {
+  it("counts word-boundary matches, shared with the scorer's own matching logic", () => {
+    expect(countSkillMatches("python python python", "python")).toBe(3);
+    expect(countSkillMatches("Director of R&D", "r")).toBe(0);
+    expect(countSkillMatches("Use R for stats", "r")).toBe(1);
   });
 });
 

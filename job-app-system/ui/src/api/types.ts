@@ -49,6 +49,7 @@ export interface Posting {
   applications: Application[];
   // Present only when a CandidateProfile exists — see api/src/fitScore.ts.
   fitScore?: number | null;
+  fitScoreRaw?: number | null;
   fitTier?: string | null;
   matchedSkills?: string[] | null;
   reasons?: { kind: string; label: string; points: number }[] | null;
