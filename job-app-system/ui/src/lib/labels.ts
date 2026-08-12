@@ -53,6 +53,44 @@ export const SENIORITY_FILTER_OPTIONS: { value: string; label: string }[] = [
   ...SENIORITY_OPTIONS,
 ];
 
+// Work mode is a fixed 3-value enum surfaced by the API (`Posting.workMode`) — same hardcoded
+// pattern as SENIORITY_LABELS above.
+export const WORK_MODE_LABELS: Record<string, string> = {
+  REMOTE: "Remote",
+  HYBRID: "Hybrid",
+  ONSITE: "On-site",
+};
+
+export const WORK_MODE_ORDER: string[] = ["REMOTE", "HYBRID", "ONSITE"];
+
+export const WORK_MODE_OPTIONS: { value: string; label: string }[] = WORK_MODE_ORDER.map((value) => ({
+  value,
+  label: WORK_MODE_LABELS[value],
+}));
+
+export const WORK_MODE_FILTER_OPTIONS: { value: string; label: string }[] = [
+  { value: "all", label: "All work modes" },
+  ...WORK_MODE_OPTIONS,
+];
+
+// Region is a fixed 2-value enum surfaced by the API (`Posting.region`) — same hardcoded pattern.
+export const REGION_LABELS: Record<string, string> = {
+  USA: "United States",
+  INTERNATIONAL: "International",
+};
+
+export const REGION_ORDER: string[] = ["USA", "INTERNATIONAL"];
+
+export const REGION_OPTIONS: { value: string; label: string }[] = REGION_ORDER.map((value) => ({
+  value,
+  label: REGION_LABELS[value],
+}));
+
+export const REGION_FILTER_OPTIONS: { value: string; label: string }[] = [
+  { value: "all", label: "All regions" },
+  ...REGION_OPTIONS,
+];
+
 // Moved from Pipeline.tsx so every page renders ApplicationStage/source labels the same way.
 export const STAGE_LABELS: Record<ApplicationStage, string> = {
   FOUND: "Found",

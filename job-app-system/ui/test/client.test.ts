@@ -41,13 +41,14 @@ describe("api client", () => {
     expect(calledUrl).not.toContain("location=");
   });
 
-  it("passes seniority, remoteOnly, and minFit through as query params", async () => {
+  it("passes seniority, workMode, region, and minFit through as query params", async () => {
     const fetchMock = mockFetch({ ok: true, jsonBody: [] });
     vi.stubGlobal("fetch", fetchMock);
-    await api.postings.list({ seniority: "SENIOR", remoteOnly: true, minFit: 40 });
+    await api.postings.list({ seniority: "SENIOR", workMode: "REMOTE", region: "USA", minFit: 40 });
     const calledUrl = fetchMock.mock.calls[0][0] as string;
     expect(calledUrl).toContain("seniority=SENIOR");
-    expect(calledUrl).toContain("remoteOnly=true");
+    expect(calledUrl).toContain("workMode=REMOTE");
+    expect(calledUrl).toContain("region=USA");
     expect(calledUrl).toContain("minFit=40");
   });
 

@@ -19,9 +19,13 @@ export const APPLICATION_STAGES = [
 ] as const;
 
 export const POSTING_SENIORITIES = ["ENTRY", "MID", "SENIOR", "EXECUTIVE"] as const;
+export const POSTING_WORK_MODES = ["REMOTE", "HYBRID", "ONSITE"] as const;
+export const POSTING_REGIONS = ["USA", "INTERNATIONAL"] as const;
 
 export const postingCategorySchema = z.enum(POSTING_CATEGORIES);
 export const postingSenioritySchema = z.enum(POSTING_SENIORITIES);
+export const postingWorkModeSchema = z.enum(POSTING_WORK_MODES);
+export const postingRegionSchema = z.enum(POSTING_REGIONS);
 export const applicationStageSchema = z.enum(APPLICATION_STAGES);
 
 export const updateApplicationSchema = z.object({
@@ -40,6 +44,8 @@ export const updatePostingSchema = z.object({
   category: postingCategorySchema.optional(),
   seniority: postingSenioritySchema.nullable().optional(),
   salary: z.string().nullable().optional(),
+  workMode: postingWorkModeSchema.nullable().optional(),
+  region: postingRegionSchema.nullable().optional(),
   description: z.string().optional(),
   duplicateRejected: z.boolean().optional(),
   dismissedAt: z.string().datetime().nullable().optional(),

@@ -2,6 +2,7 @@ import { prisma } from "./db.js";
 import type { NormalizedPosting } from "./types.js";
 import { isLikelyDuplicateTitle } from "./dedupe.js";
 import { classifySeniority } from "./seniority.js";
+import { classifyWorkMode, classifyRegion } from "./location.js";
 
 // Consecutive scrape runs of an org's source that must miss a posting before it's considered
 // closed — not 1, so a single flaky/partial run can't wrongly close everything from that org.
@@ -51,6 +52,11 @@ export async function ingestPostings(sourceId: string, postings: NormalizedPosti
           // Unlike description, seniority is RE-COMPUTED on every re-scrape (not fill-only) — the
           // classifier can improve over time even though the title itself rarely changes.
           seniority: classifySeniority(posting.title, posting.description),
+          // Same re-compute-every-scrape treatment as seniority above, for the same reason: the
+          // classifiers in location.ts can improve over time even though location text rarely
+          // changes for an already-seen posting.
+          workMode: classifyWorkMode(posting.location, posting.description),
+          region: classifyRegion(posting.location),
         },
       });
       skipped++;
@@ -77,6 +83,8 @@ export async function ingestPostings(sourceId: string, postings: NormalizedPosti
         location: posting.location,
         category: posting.category,
         seniority: classifySeniority(posting.title, posting.description),
+        workMode: classifyWorkMode(posting.location, posting.description),
+        region: classifyRegion(posting.location),
         url: posting.url,
         description: posting.description,
         salary: posting.salary,

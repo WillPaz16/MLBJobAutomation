@@ -4,7 +4,16 @@ import { toast } from "sonner";
 import { api } from "../api/client";
 import type { Application, Posting, PostingCategory } from "../api/types";
 import { htmlToPlainText, snippet } from "@/lib/utils";
-import { CATEGORY_FILTER_OPTIONS, CATEGORY_LABELS, SENIORITY_FILTER_OPTIONS, SENIORITY_LABELS } from "@/lib/labels";
+import {
+  CATEGORY_FILTER_OPTIONS,
+  CATEGORY_LABELS,
+  REGION_FILTER_OPTIONS,
+  REGION_LABELS,
+  SENIORITY_FILTER_OPTIONS,
+  SENIORITY_LABELS,
+  WORK_MODE_FILTER_OPTIONS,
+  WORK_MODE_LABELS,
+} from "@/lib/labels";
 import { useFilterParams } from "@/hooks/useFilterParams";
 import { Pagination } from "@/components/Pagination";
 import { ErrorState } from "@/components/states/ErrorState";
@@ -76,7 +85,8 @@ const FILTER_DEFAULTS: Record<string, string> = {
   showDismissed: "false",
   pageSize: "25",
   seniority: "all",
-  remoteOnly: "false",
+  workMode: "all",
+  region: "all",
   minFit: "none",
 };
 
@@ -91,7 +101,8 @@ const FILTER_CHIP_LABELS: Record<string, (value: string) => string> = {
   showDismissed: () => "Show dismissed: on",
   pageSize: (v) => `Rows per page: ${v}`,
   seniority: (v) => `Level: ${SENIORITY_LABELS[v] ?? v}`,
-  remoteOnly: () => "Remote only",
+  workMode: (v) => `Work mode: ${WORK_MODE_LABELS[v] ?? v}`,
+  region: (v) => `Region: ${REGION_LABELS[v] ?? v}`,
   minFit: (v) => `Fit: ${MIN_FIT_OPTIONS.find((o) => o.value === v)?.label ?? v}`,
 };
 
@@ -143,6 +154,8 @@ export function Discovery() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkApproving, setBulkApproving] = useState(false);
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
+  const [bulkDismissing, setBulkDismissing] = useState(false);
+  const [bulkDismissProgress, setBulkDismissProgress] = useState<{ done: number; total: number } | null>(null);
   const [detailPosting, setDetailPosting] = useState<Posting | null>(null);
   const [manualOpen, setManualOpen] = useState(false);
   const [manualForm, setManualForm] = useState({
@@ -188,7 +201,8 @@ export function Discovery() {
         hideDuplicates: filters.hideDuplicates === "true",
         showDismissed: filters.showDismissed === "true",
         seniority: filters.seniority === "all" ? undefined : filters.seniority,
-        remoteOnly: filters.remoteOnly === "true" ? true : undefined,
+        workMode: filters.workMode === "all" ? undefined : filters.workMode,
+        region: filters.region === "all" ? undefined : filters.region,
         minFit: filters.minFit === "none" ? undefined : Number(filters.minFit),
         take: pageSize,
         skip: (page - 1) * pageSize,
@@ -278,6 +292,47 @@ export function Discovery() {
 
   async function approveSelected() {
     await approveIds(Array.from(selected));
+  }
+
+  async function dismissIds(ids: string[]) {
+    setBulkDismissing(true);
+    setBulkDismissProgress({ done: 0, total: ids.length });
+    const dismissedAt = new Date().toISOString();
+    const results = await runInBatches(
+      ids,
+      5,
+      (id) => api.postings.update(id, { dismissedAt }),
+      (done) => setBulkDismissProgress({ done, total: ids.length })
+    );
+    setBulkDismissing(false);
+    setBulkDismissProgress(null);
+    setSelected(new Set());
+    const failed = results.filter((r) => r.error).map((r) => r.item);
+    const succeeded = ids.filter((id) => !failed.includes(id));
+    if (failed.length === 0) {
+      toast.success(`Dismissed ${succeeded.length} posting(s)`, {
+        action: { label: "Undo", onClick: () => undismissIds(succeeded) },
+      });
+    } else {
+      toast.warning(`Dismissed ${succeeded.length} of ${ids.length} — ${failed.length} failed`, {
+        action: { label: "Retry failed", onClick: () => dismissIds(failed) },
+      });
+    }
+    await load();
+  }
+
+  async function undismissIds(ids: string[]) {
+    try {
+      await Promise.all(ids.map((id) => api.postings.update(id, { dismissedAt: null })));
+      toast.success("Restored");
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to restore postings");
+    }
+  }
+
+  async function dismissSelected() {
+    await dismissIds(Array.from(selected));
   }
 
   async function createManualPosting() {
@@ -478,6 +533,40 @@ export function Discovery() {
           </Select>
         </div>
         <div>
+          <Label htmlFor="filter-work-mode" className="mb-1">
+            Work mode
+          </Label>
+          <Select value={filters.workMode} onValueChange={(v) => setFilter("workMode", v ?? "all")}>
+            <SelectTrigger id="filter-work-mode" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {WORK_MODE_FILTER_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <Label htmlFor="filter-region" className="mb-1">
+            Region
+          </Label>
+          <Select value={filters.region} onValueChange={(v) => setFilter("region", v ?? "all")}>
+            <SelectTrigger id="filter-region" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {REGION_FILTER_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
           <Label htmlFor="filter-location" className="mb-1">
             Location contains
           </Label>
@@ -597,16 +686,6 @@ export function Discovery() {
                   Show dismissed
                 </Label>
               </div>
-              <div className="flex items-center gap-1.5">
-                <Checkbox
-                  id="remote-only"
-                  checked={filters.remoteOnly === "true"}
-                  onCheckedChange={(checked) => setFilter("remoteOnly", checked === true ? "true" : "false")}
-                />
-                <Label htmlFor="remote-only" className="text-xs font-medium text-muted-foreground">
-                  Remote only
-                </Label>
-              </div>
             </PopoverContent>
           </Popover>
         </div>
@@ -661,10 +740,20 @@ export function Discovery() {
       {selected.size > 0 && (
         <div className="mb-4 flex items-center gap-3 rounded-md border bg-muted/40 px-3 py-2">
           <span className="text-sm">{selected.size} selected</span>
-          <Button size="sm" onClick={approveSelected} disabled={bulkApproving}>
+          <Button size="sm" onClick={approveSelected} disabled={bulkApproving || bulkDismissing}>
             {bulkApproving && bulkProgress
               ? `Approving ${bulkProgress.done}/${bulkProgress.total}…`
               : "Approve selected"}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={dismissSelected}
+            disabled={bulkApproving || bulkDismissing}
+          >
+            {bulkDismissing && bulkDismissProgress
+              ? `Dismissing ${bulkDismissProgress.done}/${bulkDismissProgress.total}…`
+              : "Dismiss selected"}
           </Button>
           <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
             Clear
@@ -769,6 +858,8 @@ export function Discovery() {
                   <div className="mb-3 flex flex-wrap items-center gap-1.5">
                     <Badge variant="secondary">{CATEGORY_LABELS[p.category]}</Badge>
                     {p.seniority && <Badge variant="secondary">{SENIORITY_LABELS[p.seniority] ?? p.seniority}</Badge>}
+                    {p.workMode && <Badge variant="secondary">{WORK_MODE_LABELS[p.workMode] ?? p.workMode}</Badge>}
+                    {p.region && <Badge variant="secondary">{REGION_LABELS[p.region] ?? p.region}</Badge>}
                     {p.fitScore != null && (
                       <Tooltip>
                         <TooltipTrigger render={<button type="button" />}>

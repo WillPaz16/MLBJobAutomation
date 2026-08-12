@@ -31,6 +31,8 @@ model Posting {
   category      String   @default("OTHER")
   seniority     String?  // computed at ingest time, see scrapers/src/seniority.ts — "ENTRY" | "MID" | "SENIOR" | "EXECUTIVE" | null (unclassified)
   salary        String?  // raw text when a source happens to expose it (rare) — display-only, never parsed/filtered numerically
+  workMode      String?  // computed at ingest time, see scrapers/src/location.ts — "REMOTE" | "HYBRID" | "ONSITE" | null (unclassified)
+  region        String?  // computed at ingest time, see scrapers/src/location.ts — "USA" | "INTERNATIONAL" | null (unclassified)
   url           String
   description   String?
   postedAt      DateTime?

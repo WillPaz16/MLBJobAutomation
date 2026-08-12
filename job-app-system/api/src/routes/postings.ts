@@ -37,6 +37,8 @@ postingsRouter.get(
     const {
       category,
       seniority,
+      workMode,
+      region,
       location,
       remoteOnly,
       q,
@@ -62,6 +64,15 @@ postingsRouter.get(
     const where = {
       category: category ? (category as string) : undefined,
       seniority: seniority ? (seniority as string) : undefined,
+      // Exact-match filters on the classifiers in scrapers/src/location.ts, same pattern as
+      // `seniority` above. `workMode: "REMOTE"` and the older `remoteOnly` boolean filter below
+      // are two independent ways to ask for the same thing — they're kept consistent because
+      // classifyWorkMode's REMOTE branch uses the identical `/\bremote\b/i` test that
+      // `remoteOnly`'s `location.contains("remote")` performs (and Prisma's SQLite `contains` is
+      // case-insensitive by default, confirmed live against real data), so a stored `workMode`
+      // can never disagree with what the live substring check would compute.
+      workMode: workMode ? (workMode as string) : undefined,
+      region: region ? (region as string) : undefined,
       // Matches the existing free-text `location` contains-filter's case sensitivity exactly
       // (Prisma's default `contains` on SQLite is case-sensitive) — remoteOnly is just another
       // `location`-shaped condition, combined via AND below rather than a duplicate object key.
@@ -160,13 +171,31 @@ postingsRouter.get(
 postingsRouter.get(
   "/facets",
   asyncHandler(async (_req, res) => {
-    const rows = await prisma.posting.findMany({
-      where: { seniority: { not: null } },
-      select: { seniority: true },
-      distinct: ["seniority"],
-      orderBy: { seniority: "asc" },
+    const [seniorityRows, workModeRows, regionRows] = await Promise.all([
+      prisma.posting.findMany({
+        where: { seniority: { not: null } },
+        select: { seniority: true },
+        distinct: ["seniority"],
+        orderBy: { seniority: "asc" },
+      }),
+      prisma.posting.findMany({
+        where: { workMode: { not: null } },
+        select: { workMode: true },
+        distinct: ["workMode"],
+        orderBy: { workMode: "asc" },
+      }),
+      prisma.posting.findMany({
+        where: { region: { not: null } },
+        select: { region: true },
+        distinct: ["region"],
+        orderBy: { region: "asc" },
+      }),
+    ]);
+    res.json({
+      seniorities: seniorityRows.map((r) => r.seniority),
+      workModes: workModeRows.map((r) => r.workMode),
+      regions: regionRows.map((r) => r.region),
     });
-    res.json({ seniorities: rows.map((r) => r.seniority) });
   })
 );
 

@@ -30,6 +30,8 @@ export interface Posting {
   location: string | null;
   category: PostingCategory;
   seniority: string | null;
+  workMode: string | null;
+  region: string | null;
   salary: string | null;
   url: string;
   description: string | null;

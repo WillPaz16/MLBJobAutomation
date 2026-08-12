@@ -81,6 +81,43 @@ describe("GET /api/postings", () => {
     expect(res.body[0].title).toBe("Senior role");
   });
 
+  it("filters by workMode", async () => {
+    await createPosting({ workMode: "REMOTE", title: "Remote role" });
+    await createPosting({ workMode: "ONSITE", title: "Onsite role" });
+    const res = await request(app).get("/api/postings?workMode=REMOTE");
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].title).toBe("Remote role");
+  });
+
+  it("filters by region", async () => {
+    await createPosting({ region: "USA", title: "USA role" });
+    await createPosting({ region: "INTERNATIONAL", title: "Intl role" });
+    const res = await request(app).get("/api/postings?region=INTERNATIONAL");
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].title).toBe("Intl role");
+  });
+
+  it("composes workMode/region filters with an existing filter like category", async () => {
+    await createPosting({ workMode: "REMOTE", region: "USA", category: "DATA_SCIENCE", title: "DS remote USA" });
+    await createPosting({ workMode: "REMOTE", region: "USA", category: "BASEBALL_OPS", title: "Ops remote USA" });
+    await createPosting({ workMode: "ONSITE", region: "USA", category: "DATA_SCIENCE", title: "DS onsite USA" });
+
+    const res = await request(app).get("/api/postings?workMode=REMOTE&region=USA&category=DATA_SCIENCE");
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].title).toBe("DS remote USA");
+  });
+
+  it("keeps workMode=REMOTE consistent with the remoteOnly substring filter on the same data", async () => {
+    await createPosting({ location: "Remote - USA", workMode: "REMOTE", title: "Remote role" });
+    await createPosting({ location: "Chicago, IL", workMode: "ONSITE", title: "Onsite role" });
+
+    const viaWorkMode = await request(app).get("/api/postings?workMode=REMOTE");
+    const viaRemoteOnly = await request(app).get("/api/postings?remoteOnly=true");
+    expect(viaWorkMode.body.map((p: { title: string }) => p.title)).toEqual(
+      viaRemoteOnly.body.map((p: { title: string }) => p.title)
+    );
+  });
+
   it("filters remote-only postings, composing correctly with a text location filter", async () => {
     await createPosting({ location: "Remote", title: "Remote role" });
     await createPosting({ location: "Chicago, IL (Remote friendly)", title: "Chicago remote-friendly role" });
@@ -278,6 +315,20 @@ describe("GET /api/postings/organizations", () => {
     const res = await request(app).get("/api/postings/organizations");
     expect(res.status).toBe(200);
     expect(res.body).toEqual(["Boston Red Sox", "Chicago Cubs"]);
+  });
+});
+
+describe("GET /api/postings/facets", () => {
+  it("returns distinct non-null seniorities, workModes, and regions", async () => {
+    await createPosting({ seniority: "SENIOR", workMode: "REMOTE", region: "USA" });
+    await createPosting({ seniority: "ENTRY", workMode: "ONSITE", region: "INTERNATIONAL" });
+    await createPosting({ seniority: null, workMode: null, region: null });
+
+    const res = await request(app).get("/api/postings/facets");
+    expect(res.status).toBe(200);
+    expect(res.body.seniorities.sort()).toEqual(["ENTRY", "SENIOR"]);
+    expect(res.body.workModes.sort()).toEqual(["ONSITE", "REMOTE"]);
+    expect(res.body.regions.sort()).toEqual(["INTERNATIONAL", "USA"]);
   });
 });
 
