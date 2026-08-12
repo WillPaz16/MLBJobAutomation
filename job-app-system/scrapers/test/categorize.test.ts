@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { categorize } from "../src/categorize.js";
+import { categorize, isMlbOrg } from "../src/categorize.js";
 
 describe("categorize", () => {
   it("classifies baseball R&D roles", () => {
@@ -66,5 +66,43 @@ describe("categorize", () => {
       )
     ).toBe("BASEBALL_RND");
     expect(categorize("Junior Product Designer", "Los Angeles Dodgers")).toBe("OTHER");
+  });
+});
+
+describe("isMlbOrg", () => {
+  it("matches known MLB org names/nicknames", () => {
+    expect(isMlbOrg("Boston Red Sox")).toBe(true);
+    expect(isMlbOrg("Cincinnati Reds")).toBe(true);
+  });
+
+  it("does not match unrelated companies", () => {
+    expect(isMlbOrg("Airbnb")).toBe(false);
+    expect(isMlbOrg("PathAI")).toBe(false);
+  });
+
+  it("does not false-positive on words that merely contain a hint as a substring of a different word", () => {
+    // "guardian life insurance" does not contain "guardians" (no trailing s), and "angel
+    // studios" does not contain "angels" (no trailing s) — both correctly don't match.
+    expect("guardian life insurance".includes("guardians")).toBe(false);
+    expect(isMlbOrg("Guardian Life Insurance")).toBe(false);
+    expect("angel studios".includes("angels")).toBe(false);
+    expect(isMlbOrg("Angel Studios")).toBe(false);
+  });
+
+  it("only checks the organization string, not title/description", () => {
+    // A non-baseball org's role can mention a team name in its title without the org itself
+    // being that team.
+    expect(isMlbOrg("Some Warehouse Co")).toBe(false);
+  });
+
+  it("has known false-positive risk on generic team nicknames that are also common words/company-name fragments", () => {
+    // Spot-checked systematically: "rangers", "braves", and "athletics" are broad enough hints
+    // that they match organizations that aren't the actual MLB team, e.g. a company literally
+    // named using that word. This is a known, accepted tradeoff of substring-based org
+    // matching (same tradeoff categorize() already accepts for its own haystack match) — not a
+    // bug to fix here, just documented risk.
+    expect(isMlbOrg("Rangers Applied Sciences")).toBe(true);
+    expect(isMlbOrg("Braves Trust")).toBe(true);
+    expect(isMlbOrg("Athletics Corp")).toBe(true);
   });
 });

@@ -49,6 +49,8 @@ postingsRouter.get(
       minFit,
       hideDuplicates,
       showDismissed,
+      isMlbTeam,
+      sourceSection,
     } = req.query;
     const { take, skip } = paginationSchema.parse(req.query);
 
@@ -78,6 +80,12 @@ postingsRouter.get(
       // `location`-shaped condition, combined via AND below rather than a duplicate object key.
       source: source ? { type: source as string } : undefined,
       organization: organization ? (organization as string) : undefined,
+      // Exact-match boolean filter, same "true"/"false" string-coercion pattern as
+      // hideDuplicates/showDismissed above — Express query params always arrive as strings.
+      isMlbTeam: isMlbTeam === "true" ? true : isMlbTeam === "false" ? false : undefined,
+      // Exact-match filter, same pattern as `organization` above — sourceSection is free-text
+      // (the exact SimplifyJobs section header), not an enum, so no zod schema entry is needed.
+      sourceSection: sourceSection ? (sourceSection as string) : undefined,
       dismissedAt: showDismissed === "true" ? undefined : null,
       ...statusFilter,
       AND: [
@@ -171,7 +179,7 @@ postingsRouter.get(
 postingsRouter.get(
   "/facets",
   asyncHandler(async (_req, res) => {
-    const [seniorityRows, workModeRows, regionRows] = await Promise.all([
+    const [seniorityRows, workModeRows, regionRows, mlbTeamTrueCount, mlbTeamFalseCount, sourceSectionRows] = await Promise.all([
       prisma.posting.findMany({
         where: { seniority: { not: null } },
         select: { seniority: true },
@@ -190,11 +198,32 @@ postingsRouter.get(
         distinct: ["region"],
         orderBy: { region: "asc" },
       }),
+      // Unlike the distinct-value lists above, these two are rendered directly as user-facing
+      // tab-count numbers (Discovery's Baseball/DS-AI-ML/Quant/PM tabs) — an unscoped count would
+      // visibly disagree with what the default view actually shows (confirmed live: isMlbTeam=true
+      // totalled 204 unscoped vs. 186 once closed/dismissed rows are excluded, a discrepancy a user
+      // would immediately notice comparing the tab label to the tab's own contents). Scoped to
+      // match the default view exactly: active (closedAt: null) and not dismissed
+      // (dismissedAt: null) — the same status="active"/showDismissed="false" defaults the main
+      // GET / handler uses.
+      prisma.posting.count({ where: { isMlbTeam: true, closedAt: null, dismissedAt: null } }),
+      prisma.posting.count({ where: { isMlbTeam: false, closedAt: null, dismissedAt: null } }),
+      prisma.posting.groupBy({
+        by: ["sourceSection"],
+        where: { sourceSection: { not: null }, closedAt: null, dismissedAt: null },
+        _count: { sourceSection: true },
+      }),
     ]);
+    const sourceSectionCounts: Record<string, number> = {};
+    for (const row of sourceSectionRows) {
+      if (row.sourceSection) sourceSectionCounts[row.sourceSection] = row._count.sourceSection;
+    }
     res.json({
       seniorities: seniorityRows.map((r) => r.seniority),
       workModes: workModeRows.map((r) => r.workMode),
       regions: regionRows.map((r) => r.region),
+      mlbTeamCounts: { true: mlbTeamTrueCount, false: mlbTeamFalseCount },
+      sourceSectionCounts,
     });
   })
 );

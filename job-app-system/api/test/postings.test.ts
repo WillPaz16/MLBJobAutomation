@@ -97,6 +97,54 @@ describe("GET /api/postings", () => {
     expect(res.body[0].title).toBe("Intl role");
   });
 
+  it("filters by isMlbTeam=true", async () => {
+    await createPosting({ isMlbTeam: true, title: "Team role" });
+    await createPosting({ isMlbTeam: false, title: "Non-team role" });
+    const res = await request(app).get("/api/postings?isMlbTeam=true");
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].title).toBe("Team role");
+  });
+
+  it("filters by isMlbTeam=false", async () => {
+    await createPosting({ isMlbTeam: true, title: "Team role" });
+    await createPosting({ isMlbTeam: false, title: "Non-team role" });
+    const res = await request(app).get("/api/postings?isMlbTeam=false");
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].title).toBe("Non-team role");
+  });
+
+  it("composes isMlbTeam with an existing filter like category", async () => {
+    await createPosting({ isMlbTeam: true, category: "DATA_SCIENCE", title: "Team DS role" });
+    await createPosting({ isMlbTeam: true, category: "BASEBALL_OPS", title: "Team ops role" });
+    await createPosting({ isMlbTeam: false, category: "DATA_SCIENCE", title: "Non-team DS role" });
+
+    const res = await request(app).get("/api/postings?isMlbTeam=true&category=DATA_SCIENCE");
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].title).toBe("Team DS role");
+  });
+
+  it("filters by sourceSection", async () => {
+    await createPosting({ sourceSection: "Data Science, AI & Machine Learning", title: "DS section role" });
+    await createPosting({ sourceSection: "Quantitative Finance", title: "Quant section role" });
+    await createPosting({ sourceSection: null, title: "No section role" });
+
+    const res = await request(app).get(`/api/postings?sourceSection=${encodeURIComponent("Quantitative Finance")}`);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].title).toBe("Quant section role");
+  });
+
+  it("composes sourceSection with isMlbTeam=false", async () => {
+    await createPosting({ sourceSection: "Data Science, AI & Machine Learning", isMlbTeam: false, title: "Non-team DS section role" });
+    await createPosting({ sourceSection: "Data Science, AI & Machine Learning", isMlbTeam: true, title: "Team DS section role" });
+    await createPosting({ sourceSection: "Quantitative Finance", isMlbTeam: false, title: "Non-team quant role" });
+
+    const res = await request(app).get(
+      `/api/postings?sourceSection=${encodeURIComponent("Data Science, AI & Machine Learning")}&isMlbTeam=false`
+    );
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].title).toBe("Non-team DS section role");
+  });
+
   it("composes workMode/region filters with an existing filter like category", async () => {
     await createPosting({ workMode: "REMOTE", region: "USA", category: "DATA_SCIENCE", title: "DS remote USA" });
     await createPosting({ workMode: "REMOTE", region: "USA", category: "BASEBALL_OPS", title: "Ops remote USA" });
@@ -329,6 +377,32 @@ describe("GET /api/postings/facets", () => {
     expect(res.body.seniorities.sort()).toEqual(["ENTRY", "SENIOR"]);
     expect(res.body.workModes.sort()).toEqual(["ONSITE", "REMOTE"]);
     expect(res.body.regions.sort()).toEqual(["INTERNATIONAL", "USA"]);
+  });
+
+  it("returns mlbTeamCounts with true/false counts", async () => {
+    await createPosting({ isMlbTeam: true });
+    await createPosting({ isMlbTeam: true });
+    await createPosting({ isMlbTeam: false });
+
+    const res = await request(app).get("/api/postings/facets");
+    expect(res.status).toBe(200);
+    expect(res.body.mlbTeamCounts).toEqual({ true: 2, false: 1 });
+  });
+
+  it("returns sourceSectionCounts keyed by exact section header, excluding nulls", async () => {
+    await createPosting({ sourceSection: "Data Science, AI & Machine Learning" });
+    await createPosting({ sourceSection: "Data Science, AI & Machine Learning" });
+    await createPosting({ sourceSection: "Quantitative Finance" });
+    await createPosting({ sourceSection: "Product Management" });
+    await createPosting({ sourceSection: null });
+
+    const res = await request(app).get("/api/postings/facets");
+    expect(res.status).toBe(200);
+    expect(res.body.sourceSectionCounts).toEqual({
+      "Data Science, AI & Machine Learning": 2,
+      "Quantitative Finance": 1,
+      "Product Management": 1,
+    });
   });
 });
 

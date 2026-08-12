@@ -44,6 +44,8 @@ export interface Posting {
   possibleDuplicateOf?: Posting | null;
   duplicateRejected: boolean;
   dismissedAt: string | null;
+  isMlbTeam: boolean;
+  sourceSection: string | null;
   applications: Application[];
   // Present only when a CandidateProfile exists — see api/src/fitScore.ts.
   fitScore?: number | null;

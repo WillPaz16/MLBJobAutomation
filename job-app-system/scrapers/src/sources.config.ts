@@ -12,7 +12,14 @@ export const greenhouseSources: { boardToken: string; organizationName: string }
   { boardToken: "philliesbaseballoperations", organizationName: "Philadelphia Phillies" },
   { boardToken: "clevelandguardiansbops", organizationName: "Cleveland Guardians" },
   { boardToken: "baltimoreorioles", organizationName: "Baltimore Orioles" },
-  { boardToken: "athleticsbaseballops", organizationName: "Athletics" },
+  // athleticsbaseballops returns 0 live jobs (checked 2026-08-11) and is likely dead/renamed —
+  // athleticsbusinessops (14 live jobs incl. "Director, Ticket Operations", "Director,
+  // Production Technology (Ballpark)") and athletics (1 live job, "Bullpen Catcher") are the
+  // real current boards, both curl-verified live. Dropping the dead token rather than keeping
+  // it like Phillies' since there's no reason to expect it to start posting again under that
+  // exact name.
+  { boardToken: "athleticsbusinessops", organizationName: "Athletics" },
+  { boardToken: "athletics", organizationName: "Athletics" },
 ];
 
 // Lever: find an org's site slug from their careers page URL: jobs.lever.co/<site>.

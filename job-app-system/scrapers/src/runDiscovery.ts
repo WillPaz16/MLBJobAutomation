@@ -62,7 +62,7 @@ async function runAdapter(adapter: Adapter, configs: Record<string, any>[]) {
 // org. ingestPostings requires a single `organization` string per call (for its closing-pass
 // scoping), so its output must be grouped by organization first, then ingested once per group —
 // never as one ungrouped call, which would break that scoping (see CLAUDE.md).
-async function runNewGradListAdapter(): Promise<number> {
+export async function runNewGradListAdapter(): Promise<number> {
   const source = await getOrCreateSource(
     newGradListAdapter.sourceName,
     newGradListAdapter.sourceType,
@@ -123,8 +123,12 @@ async function main() {
   await prisma.$disconnect();
 }
 
-main().catch(async (err) => {
-  console.error(err);
-  await prisma.$disconnect();
-  process.exit(1);
-});
+// Guarded so this module can be imported (e.g. to call runNewGradListAdapter alone) without
+// triggering the full 30-team discovery run as a side effect of import.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch(async (err) => {
+    console.error(err);
+    await prisma.$disconnect();
+    process.exit(1);
+  });
+}

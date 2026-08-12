@@ -175,6 +175,7 @@ export const newGradListAdapter: Adapter = {
           category,
           url: parsed.url,
           description: undefined,
+          sourceSection: sectionName,
         });
       }
     }

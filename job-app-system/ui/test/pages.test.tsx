@@ -34,6 +34,13 @@ vi.mock("../src/api/client", () => ({
       list: vi.fn().mockResolvedValue({ postings: [], total: 0 }),
       approve: vi.fn(),
       organizations: vi.fn().mockResolvedValue([]),
+      facets: vi.fn().mockResolvedValue({
+        seniorities: [],
+        workModes: [],
+        regions: [],
+        mlbTeamCounts: { true: 0, false: 0 },
+        sourceSectionCounts: {},
+      }),
     },
     applications: { list: vi.fn().mockResolvedValue([]), update: vi.fn() },
     documents: { list: vi.fn().mockResolvedValue([]), create: vi.fn(), remove: documentsRemove },

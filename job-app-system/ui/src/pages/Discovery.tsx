@@ -7,12 +7,16 @@ import { htmlToPlainText, snippet } from "@/lib/utils";
 import {
   CATEGORY_FILTER_OPTIONS,
   CATEGORY_LABELS,
+  DISCOVERY_TAB_LABELS,
+  DISCOVERY_TAB_ORDER,
+  DISCOVERY_TAB_SOURCE_SECTIONS,
   REGION_FILTER_OPTIONS,
   REGION_LABELS,
   SENIORITY_FILTER_OPTIONS,
   SENIORITY_LABELS,
   WORK_MODE_FILTER_OPTIONS,
   WORK_MODE_LABELS,
+  type DiscoveryTab,
 } from "@/lib/labels";
 import { useFilterParams } from "@/hooks/useFilterParams";
 import { Pagination } from "@/components/Pagination";
@@ -30,6 +34,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -75,6 +80,7 @@ function fitBadgeClassName(tier: string | null | undefined): string {
 }
 
 const FILTER_DEFAULTS: Record<string, string> = {
+  tab: "baseball",
   category: "all",
   location: "",
   search: "",
@@ -147,6 +153,12 @@ export function Discovery() {
 
   const [postings, setPostings] = useState<Posting[]>([]);
   const [organizations, setOrganizations] = useState<string[]>([]);
+  const [tabCounts, setTabCounts] = useState<Record<DiscoveryTab, number>>({
+    baseball: 0,
+    "ds-ai-ml": 0,
+    quant: 0,
+    pm: 0,
+  });
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -191,6 +203,7 @@ export function Discovery() {
     setLoading(true);
     setError(null);
     try {
+      const tab = (filters.tab as DiscoveryTab) ?? "baseball";
       const { postings: data, total: newTotal } = await api.postings.list({
         category: filters.category === "all" ? undefined : filters.category,
         location: filters.location || undefined,
@@ -204,6 +217,8 @@ export function Discovery() {
         workMode: filters.workMode === "all" ? undefined : filters.workMode,
         region: filters.region === "all" ? undefined : filters.region,
         minFit: filters.minFit === "none" ? undefined : Number(filters.minFit),
+        isMlbTeam: tab === "baseball",
+        sourceSection: tab === "baseball" ? undefined : DISCOVERY_TAB_SOURCE_SECTIONS[tab],
         take: pageSize,
         skip: (page - 1) * pageSize,
       });
@@ -233,6 +248,26 @@ export function Discovery() {
       .then(setOrganizations)
       .catch(() => {
         // silently skip — the organization filter just stays empty if this fails
+      });
+  }, []);
+
+  // Tab counts intentionally come from one mount-time facets() call, not re-derived from the
+  // filtered `total` on every load() — like inbox unread-counts, they should stay stable while
+  // triaging within a tab (category/seniority/search etc. changing shouldn't make the *other*
+  // tabs' counts jump around).
+  useEffect(() => {
+    api.postings
+      .facets()
+      .then((facets) => {
+        setTabCounts({
+          baseball: facets.mlbTeamCounts.true ?? 0,
+          "ds-ai-ml": facets.sourceSectionCounts["Data Science, AI & Machine Learning"] ?? 0,
+          quant: facets.sourceSectionCounts["Quantitative Finance"] ?? 0,
+          pm: facets.sourceSectionCounts["Product Management"] ?? 0,
+        });
+      })
+      .catch(() => {
+        // silently skip — tab labels just show without counts if this fails
       });
   }, []);
 
@@ -497,6 +532,20 @@ export function Discovery() {
         }
       />
 
+      <Tabs
+        value={filters.tab}
+        onValueChange={(v) => setFilter("tab", (v as string) ?? "baseball")}
+        className="mb-4"
+      >
+        <TabsList variant="line">
+          {DISCOVERY_TAB_ORDER.map((t) => (
+            <TabsTrigger key={t} value={t}>
+              {DISCOVERY_TAB_LABELS[t]} · {tabCounts[t]}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
+
       <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div>
           <Label htmlFor="filter-category" className="mb-1">
@@ -691,9 +740,11 @@ export function Discovery() {
         </div>
       </div>
 
-      {activeFilters.length > 0 && (
+      {activeFilters.filter((f) => f.key !== "tab").length > 0 && (
         <div className="mb-4 flex flex-wrap items-center gap-1.5">
-          {activeFilters.map(({ key, value }) => (
+          {activeFilters
+            .filter(({ key }) => key !== "tab")
+            .map(({ key, value }) => (
             <Badge key={key} variant="secondary" className="gap-1 pr-1">
               {FILTER_CHIP_LABELS[key]?.(value) ?? `${key}: ${value}`}
               <button

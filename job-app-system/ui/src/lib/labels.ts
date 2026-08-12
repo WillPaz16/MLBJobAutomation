@@ -91,6 +91,28 @@ export const REGION_FILTER_OPTIONS: { value: string; label: string }[] = [
   ...REGION_OPTIONS,
 ];
 
+// Discovery's top-level view tabs — a Baseball/MLB tab (isMlbTeam=true) plus 3 tabs for the
+// SimplifyJobs new-grad list's non-MLB sourceSection values (see newGradList.ts). Keys are short
+// and URL-friendly; values map to the isMlbTeam/sourceSection params Discovery.tsx sends to
+// GET /api/postings.
+export type DiscoveryTab = "baseball" | "ds-ai-ml" | "quant" | "pm";
+
+export const DISCOVERY_TAB_LABELS: Record<DiscoveryTab, string> = {
+  baseball: "Baseball",
+  "ds-ai-ml": "Data Science & AI/ML",
+  quant: "Quantitative Finance",
+  pm: "Product Management",
+};
+
+export const DISCOVERY_TAB_ORDER: DiscoveryTab[] = ["baseball", "ds-ai-ml", "quant", "pm"];
+
+// The exact sourceSection string values the API expects/returns for the 3 non-baseball tabs.
+export const DISCOVERY_TAB_SOURCE_SECTIONS: Record<Exclude<DiscoveryTab, "baseball">, string> = {
+  "ds-ai-ml": "Data Science, AI & Machine Learning",
+  quant: "Quantitative Finance",
+  pm: "Product Management",
+};
+
 // Moved from Pipeline.tsx so every page renders ApplicationStage/source labels the same way.
 export const STAGE_LABELS: Record<ApplicationStage, string> = {
   FOUND: "Found",

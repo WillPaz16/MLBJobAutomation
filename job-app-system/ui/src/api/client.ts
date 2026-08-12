@@ -58,6 +58,8 @@ export const api = {
       workMode?: string;
       region?: string;
       minFit?: number;
+      isMlbTeam?: boolean;
+      sourceSection?: string;
       take?: number;
       skip?: number;
     }): Promise<{ postings: Posting[]; total: number }> => {
@@ -87,7 +89,13 @@ export const api = {
     },
     organizations: () => request<string[]>("/postings/organizations"),
     facets: () =>
-      request<{ seniorities: string[]; workModes: string[]; regions: string[] }>("/postings/facets"),
+      request<{
+        seniorities: string[];
+        workModes: string[];
+        regions: string[];
+        mlbTeamCounts: { true: number; false: number };
+        sourceSectionCounts: Record<string, number>;
+      }>("/postings/facets"),
     approve: (id: string) => request<Application>(`/postings/${id}/approve`, { method: "POST" }),
     remove: (id: string) => request<void>(`/postings/${id}`, { method: "DELETE" }),
     update: (id: string, data: Partial<{ duplicateRejected: boolean; dismissedAt: string | null }>) =>

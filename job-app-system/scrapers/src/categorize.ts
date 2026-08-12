@@ -1,6 +1,6 @@
 import type { NormalizedPosting } from "./types.js";
 
-const BASEBALL_ORG_HINTS = [
+export const MLB_ORG_HINTS = [
   "baseball",
   "mlb",
   "cubs",
@@ -35,13 +35,26 @@ const BASEBALL_ORG_HINTS = [
   "diamondbacks",
 ];
 
+// Whether `organization` (only — not title/description) is an MLB team/org, per the curated
+// hint list above. Deliberately scoped to organization alone: this answers "which COMPANY
+// posted this job," not "what is this role about" — a non-baseball org's posting whose title or
+// description happens to mention a team name (e.g. "Rangers") shouldn't count. This is a
+// separate, additional export from categorize()'s own internal full-haystack (title+org+
+// description) isBaseballOrg check used for category assignment — the two intentionally answer
+// different questions, and categorize()'s logic is left exactly as-is to avoid any risk of
+// changing its category-assignment behavior.
+export function isMlbOrg(organization: string): boolean {
+  const haystack = organization.toLowerCase();
+  return MLB_ORG_HINTS.some((hint) => haystack.includes(hint));
+}
+
 export function categorize(
   title: string,
   organization: string,
   description?: string
 ): NormalizedPosting["category"] {
   const haystack = `${title} ${organization} ${description ?? ""}`.toLowerCase();
-  const isBaseballOrg = BASEBALL_ORG_HINTS.some((hint) => haystack.includes(hint));
+  const isBaseballOrg = MLB_ORG_HINTS.some((hint) => haystack.includes(hint));
 
   if (isBaseballOrg) {
     // Bare "development" is deliberately excluded from the R&D check — it over-matches

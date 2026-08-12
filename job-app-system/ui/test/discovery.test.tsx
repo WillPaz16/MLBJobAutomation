@@ -12,6 +12,17 @@ vi.mock("../src/api/client", () => ({
       list: (...args: unknown[]) => listMock(...args),
       approve: vi.fn(),
       organizations: vi.fn().mockResolvedValue([]),
+      facets: vi.fn().mockResolvedValue({
+        seniorities: [],
+        workModes: [],
+        regions: [],
+        mlbTeamCounts: { true: 186, false: 107 },
+        sourceSectionCounts: {
+          "Data Science, AI & Machine Learning": 83,
+          "Quantitative Finance": 18,
+          "Product Management": 6,
+        },
+      }),
       update: (...args: unknown[]) => updateMock(...args),
       createManual: vi.fn(),
     },
@@ -83,6 +94,47 @@ describe("Discovery URL-driven filters", () => {
     await waitFor(() => expect(listMock).toHaveBeenCalledTimes(1));
     expect(listMock).toHaveBeenCalledWith(
       expect.objectContaining({ workMode: "REMOTE", region: "USA" })
+    );
+  });
+
+  it("defaults to the Baseball tab (isMlbTeam=true, no sourceSection)", async () => {
+    listMock.mockClear();
+    renderDiscovery(["/discovery"]);
+    await waitFor(() => expect(listMock).toHaveBeenCalledTimes(1));
+    expect(listMock).toHaveBeenCalledWith(
+      expect.objectContaining({ isMlbTeam: true, sourceSection: undefined })
+    );
+  });
+
+  it.each([
+    ["ds-ai-ml", "Data Science, AI & Machine Learning"],
+    ["quant", "Quantitative Finance"],
+    ["pm", "Product Management"],
+  ])("sends isMlbTeam=false and sourceSection for the %s tab", async (tab, section) => {
+    listMock.mockClear();
+    renderDiscovery([`/discovery?tab=${tab}`]);
+    await waitFor(() => expect(listMock).toHaveBeenCalledTimes(1));
+    expect(listMock).toHaveBeenCalledWith(
+      expect.objectContaining({ isMlbTeam: false, sourceSection: section })
+    );
+  });
+
+  it("switches tabs via the tab control and updates params/URL", async () => {
+    listMock.mockClear();
+    renderDiscovery(["/discovery"]);
+    await waitFor(() => expect(listMock).toHaveBeenCalledTimes(1));
+
+    const dsTab = await screen.findByRole("tab", { name: /Data Science & AI\/ML/i });
+    fireEvent.click(dsTab);
+
+    await waitFor(() => expect(capturedSearch).toContain("tab=ds-ai-ml"));
+    await waitFor(() =>
+      expect(listMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          isMlbTeam: false,
+          sourceSection: "Data Science, AI & Machine Learning",
+        })
+      )
     );
   });
 });

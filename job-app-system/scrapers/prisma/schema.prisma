@@ -58,6 +58,15 @@ model Posting {
   // since dismissal reflects the user's judgment about the role, not the listing's liveness.
   dismissedAt           DateTime?
 
+  // Computed at ingest time, see scrapers/src/categorize.ts's isMlbOrg() — whether `organization`
+  // is an MLB team/org (org-name match only, not title/description).
+  isMlbTeam             Boolean   @default(false)
+
+  // Exact section header text a posting came from, when its source tracks sub-sections within
+  // one adapter (currently only newGradList.ts — see sources.config.ts's newGradListConfig.sections
+  // for the exact 3 values). Null for every other adapter, which has no such concept.
+  sourceSection         String?
+
   @@unique([sourceId, externalId])
 }
 
