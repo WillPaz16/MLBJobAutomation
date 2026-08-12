@@ -115,3 +115,29 @@ export interface AnalyticsTimeseries {
   applied: number[];
   fitScores: number[];
 }
+
+// Shared response shape for both GET /api/profile/coverage and POST /api/profile/coverage/preview
+// — see api/src/routes/profile.ts's computeCoverage for exactly how each field is derived.
+export interface ProfileCoverage {
+  totalPostings: number;
+  skills: { term: string; tier: "core" | "secondary"; postings: number; occurrences: number }[];
+  fitScores: number[];
+  tierCounts: { Strong: number; Good: number; Fair: number; Weak: number };
+  categoryActivity: { category: string; applied: number; dismissed: number; total: number }[];
+  calibration: {
+    dismissedAvg: number | null;
+    dismissedCount: number;
+    appliedAvg: number | null;
+    appliedCount: number;
+  };
+}
+
+// Reuses the exact shape `update`'s PUT body already accepts, per CLAUDE.md/plan convention of
+// not inventing a second type for the same draft-profile payload.
+export type CandidateProfileInput = {
+  skills: string;
+  coreSkills?: string;
+  preferredCategories?: string;
+  locationKeywords?: string;
+  excludeKeywords?: string;
+};

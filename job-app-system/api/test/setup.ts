@@ -34,6 +34,7 @@ afterEach(async () => {
   await prisma.resumeBullet.deleteMany();
   await prisma.orgProfile.deleteMany();
   await prisma.tonePreset.deleteMany();
+  await prisma.candidateProfile.deleteMany();
 });
 
 afterAll(async () => {

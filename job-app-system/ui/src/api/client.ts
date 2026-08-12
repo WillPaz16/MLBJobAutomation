@@ -4,8 +4,10 @@ import type {
   Application,
   ApplicationStage,
   CandidateProfile,
+  CandidateProfileInput,
   Document,
   Posting,
+  ProfileCoverage,
   ResumeBullet,
 } from "./types";
 
@@ -149,12 +151,10 @@ export const api = {
   },
   profile: {
     get: () => request<CandidateProfile | null>("/profile"),
-    update: (data: {
-      skills: string;
-      coreSkills?: string;
-      preferredCategories?: string;
-      locationKeywords?: string;
-      excludeKeywords?: string;
-    }) => request<CandidateProfile>("/profile", { method: "PUT", body: JSON.stringify(data) }),
+    update: (data: CandidateProfileInput) =>
+      request<CandidateProfile>("/profile", { method: "PUT", body: JSON.stringify(data) }),
+    coverage: () => request<ProfileCoverage>("/profile/coverage"),
+    previewCoverage: (draft: CandidateProfileInput) =>
+      request<ProfileCoverage>("/profile/coverage/preview", { method: "POST", body: JSON.stringify(draft) }),
   },
 };

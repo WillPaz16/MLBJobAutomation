@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/api/client";
-import type { PostingCategory } from "@/api/types";
+import type { PostingCategory, ProfileCoverage } from "@/api/types";
+import { Badge } from "@/components/ui/badge";
 import { CATEGORY_LABELS, CATEGORY_ORDER } from "@/lib/labels";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -57,6 +58,21 @@ export function Compatibility() {
   const [preferredCategories, setPreferredCategories] = useState<Set<PostingCategory>>(new Set());
   const [locationKeywords, setLocationKeywords] = useState("");
   const [excludeKeywords, setExcludeKeywords] = useState("");
+  const [coverage, setCoverage] = useState<ProfileCoverage | null>(null);
+
+  function loadCoverage() {
+    api.profile
+      .coverage()
+      .then(setCoverage)
+      .catch(() => {
+        // leave the last-known coverage (or null) in place if this fails — it's a diagnostic
+        // add-on, not something that should block the rest of the page
+      });
+  }
+
+  useEffect(() => {
+    loadCoverage();
+  }, []);
 
   useEffect(() => {
     async function load() {
@@ -115,12 +131,17 @@ export function Compatibility() {
         excludeKeywords,
       });
       toast.success("Compatibility profile saved");
+      loadCoverage();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to save profile");
     } finally {
       setSaving(false);
     }
   }
+
+  const matchedSkillCount = coverage?.skills.filter((s) => s.postings > 0).length ?? 0;
+  const unmatchedSkills = coverage?.skills.filter((s) => s.postings === 0) ?? [];
+  const { calibration } = coverage ?? {};
 
   return (
     <div className="mx-auto max-w-2xl p-6">
@@ -172,6 +193,29 @@ export function Compatibility() {
                 dilute the score, not help it — prune terms that are pure CV vocabulary (e.g. "publication",
                 "mentorship") rather than skills a job posting would actually mention.
               </p>
+              {coverage && coverage.skills.length > 0 && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {matchedSkillCount} of {coverage.skills.length} skills match at least one posting.
+                </p>
+              )}
+              {unmatchedSkills.length > 0 && (
+                <div className="mt-2">
+                  <p className="mb-1 text-xs text-muted-foreground">
+                    These don't match any current postings:
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    {unmatchedSkills.map((s) => (
+                      <Badge
+                        key={s.term}
+                        variant="outline"
+                        className="gap-1 border-amber-500/40 text-amber-700 dark:text-amber-400"
+                      >
+                        {s.term}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div>
@@ -217,6 +261,15 @@ export function Compatibility() {
               />
               <p className="mt-1 text-xs text-muted-foreground">Comma-separated — a dealbreaker penalty.</p>
             </div>
+
+            {calibration && (calibration.dismissedCount > 0 || calibration.appliedCount > 0) && (
+              <p className="text-xs text-muted-foreground">
+                {calibration.dismissedCount > 0 &&
+                  `Postings you've dismissed score ${Math.round(calibration.dismissedAvg ?? 0)} on average (n=${calibration.dismissedCount}). `}
+                {calibration.appliedCount > 0 &&
+                  `Postings you've applied to score ${Math.round(calibration.appliedAvg ?? 0)} on average (n=${calibration.appliedCount}).`}
+              </p>
+            )}
 
             <Button onClick={save} disabled={saving || skills.trim().length === 0}>
               {saving ? "Saving…" : "Save profile"}
