@@ -9,7 +9,7 @@ export interface NormalizedPosting {
   salary?: string; // raw text, only when a source happens to expose it — display-only, never parsed
   postedAt?: Date;
   // Exact section header text a posting came from, for adapters that track sub-sections within
-  // one source (currently only newGradList.ts). Undefined for every other adapter.
+  // one source (currently only jobListRepo.ts). Undefined for every other adapter.
   sourceSection?: string;
 }
 

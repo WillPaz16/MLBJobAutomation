@@ -8,7 +8,7 @@ import { aaimtrackAdapter } from "./adapters/aaimtrack.js";
 import { teamworkOnlineAdapter } from "./adapters/teamworkonline.js";
 import { dayforceAdapter } from "./adapters/dayforce.js";
 import { teamPageAdapter } from "./adapters/teamPage.js";
-import { newGradListAdapter } from "./adapters/newGradList.js";
+import { jobListRepoAdapter, type JobListRepoConfig } from "./adapters/jobListRepo.js";
 import {
   greenhouseSources,
   leverSources,
@@ -20,7 +20,7 @@ import {
   teamworkOnlineSources,
   dayforceSources,
   teamPageSources,
-  newGradListConfig,
+  jobListRepoSources,
 } from "./sources.config.js";
 import { getOrCreateSource, ingestPostings } from "./ingest.js";
 import { prisma } from "./db.js";
@@ -57,29 +57,53 @@ async function runAdapter(adapter: Adapter, configs: Record<string, any>[]) {
   return totalInserted;
 }
 
-// newGradListAdapter is structurally different from every other adapter: one fetch yields
+// jobListRepoAdapter is structurally different from every other adapter: one fetch yields
 // postings spanning potentially 50+ different organizations, rather than one config entry = one
 // org. ingestPostings requires a single `organization` string per call (for its closing-pass
 // scoping), so its output must be grouped by organization first, then ingested once per group —
 // never as one ungrouped call, which would break that scoping (see CLAUDE.md).
-export async function runNewGradListAdapter(): Promise<number> {
-  const source = await getOrCreateSource(
-    newGradListAdapter.sourceName,
-    newGradListAdapter.sourceType,
-    {}
-  );
+//
+// Two DIFFERENT try/catch scopes here, deliberately:
+//   - The OUTER one (fetch + parse + the dynamic-floor guard) intentionally aborts the WHOLE
+//     repo on failure. The three guard layers in jobListRepo.ts exist specifically to prevent a
+//     bad parse from ever reaching ingestPostings, so if any of them throw, nothing for this repo
+//     should be ingested — that's the point of the guards, not a bug to route around.
+//   - The INNER one (per-org, inside the loop) matches runAdapter's per-config-entry isolation:
+//     one organization's ingestPostings call failing (e.g. a transient DB error) must not stop
+//     ingestion for every other organization in the same repo's parsed output.
+export async function runJobListRepoAdapter(cfg: JobListRepoConfig): Promise<number> {
+  const source = await getOrCreateSource(cfg.key, jobListRepoAdapter.sourceType, cfg);
   let totalInserted = 0;
 
+  let postings;
   try {
-    const postings = await newGradListAdapter.fetchPostings(newGradListConfig);
-    const byOrg = new Map<string, typeof postings>();
-    for (const posting of postings) {
-      const group = byOrg.get(posting.organization) ?? [];
-      group.push(posting);
-      byOrg.set(posting.organization, group);
-    }
+    postings = await jobListRepoAdapter.fetchPostings(cfg);
 
-    for (const [organization, orgPostings] of byOrg) {
+    // Guard layer 3: the dynamic floor against the DB, before any ingest for this repo at all.
+    // Section-not-found and below-static-floor guards (layers 1 and 2) live inside fetchPostings
+    // itself; this one needs the source id from getOrCreateSource, so it has to run here.
+    const priorActive = await prisma.posting.count({ where: { sourceId: source.id, closedAt: null } });
+    if (priorActive > 0 && postings.length < priorActive * 0.5) {
+      throw new Error(
+        `[${cfg.key}] parsed ${postings.length} posting(s), which is less than 50% of the ${priorActive} ` +
+          `currently-active posting(s) for this source — aborting before any ingest to avoid a mass-close ` +
+          `from what looks like row-format drift`
+      );
+    }
+  } catch (err) {
+    console.error(`[${cfg.key}] failed:`, (err as Error).message);
+    return 0;
+  }
+
+  const byOrg = new Map<string, typeof postings>();
+  for (const posting of postings) {
+    const group = byOrg.get(posting.organization) ?? [];
+    group.push(posting);
+    byOrg.set(posting.organization, group);
+  }
+
+  for (const [organization, orgPostings] of byOrg) {
+    try {
       const { inserted, skipped, closed, reopened, flaggedDuplicates } = await ingestPostings(
         source.id,
         orgPostings,
@@ -94,11 +118,11 @@ export async function runNewGradListAdapter(): Promise<number> {
         .filter(Boolean)
         .join(", ");
       console.log(
-        `[${newGradListAdapter.sourceName}:${organization}] +${inserted} new, ${skipped} already known${extra ? `, ${extra}` : ""}`
+        `[${cfg.key}:${organization}] +${inserted} new, ${skipped} already known${extra ? `, ${extra}` : ""}`
       );
+    } catch (err) {
+      console.error(`[${cfg.key}:${organization}] failed:`, (err as Error).message);
     }
-  } catch (err) {
-    console.error(`[${newGradListAdapter.sourceName}] failed:`, (err as Error).message);
   }
 
   return totalInserted;
@@ -116,14 +140,14 @@ async function main() {
     runAdapter(teamworkOnlineAdapter, teamworkOnlineSources),
     runAdapter(dayforceAdapter, dayforceSources),
     runAdapter(teamPageAdapter, teamPageSources),
-    runNewGradListAdapter(),
+    ...jobListRepoSources.map((cfg) => runJobListRepoAdapter(cfg)),
   ]);
   const inserted = results.reduce((a, b) => a + b, 0);
   console.log(`Discovery run complete. ${inserted} new posting(s) inserted.`);
   await prisma.$disconnect();
 }
 
-// Guarded so this module can be imported (e.g. to call runNewGradListAdapter alone) without
+// Guarded so this module can be imported (e.g. to call runJobListRepoAdapter alone) without
 // triggering the full 30-team discovery run as a side effect of import.
 if (import.meta.url === `file://${process.argv[1]}`) {
   main().catch(async (err) => {

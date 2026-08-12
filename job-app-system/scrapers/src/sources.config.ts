@@ -2,6 +2,8 @@
 // Every entry below was verified with a live curl against its actual API before being added —
 // see the add-job-source skill for the verification steps to follow when adding more.
 
+import { FLAT_SECTION, type JobListRepoConfig } from "./adapters/jobListRepo.js";
+
 // Greenhouse: find an org's board token from their careers page URL: boards.greenhouse.io/<boardToken>.
 export const greenhouseSources: { boardToken: string; organizationName: string }[] = [
   // MLB baseball ops/analytics-adjacent boards
@@ -225,16 +227,106 @@ export const teamPageSources: {
 // genuine browser navigation (a CAPTCHA/challenge page, or the page itself failing to load) is a
 // real dead end.
 
-// SimplifyJobs/New-Grad-Positions (github.com/SimplifyJobs/New-Grad-Positions) — a community-
-// maintained, actively-updated README tracking new-grad tech/DS/quant/PM roles across 50+
-// companies. Replaces the 6 Greenhouse + 1 Lever "general data-science-heavy companies" sources
-// above (FanDuel, Catapult Sports, Instacart, Robinhood, Airbnb, Coinbase, Palantir) — those were
-// flooding Discovery with senior/staff-level and international roles that don't fit a new grad's
-// search; this source is scoped to new-grad roles by construction. Section header text confirmed
-// live via curl against the raw README (`dev` branch) — see newGradList.ts for the parsing
-// contract (single multi-org fetch, not one-config-entry-per-org like every other adapter here).
-// Single config object, not an array of per-org entries — this adapter has no per-org config
-// shape (see newGradListAdapter's fetchPostings signature).
-export const newGradListConfig: { sections: string[] } = {
-  sections: ["Data Science, AI & Machine Learning", "Quantitative Finance", "Product Management"],
-};
+// GitHub job-list repos (adapters/jobListRepo.ts) — community-maintained READMEs tracking
+// new-grad/internship tech/DS/quant/PM roles across 50+ companies per repo. Structurally
+// different from every other source here: one fetch yields postings spanning many organizations,
+// not one config entry = one org (runDiscovery.ts groups by organization before ingesting).
+//
+// All three `sectionLabel` values below map onto the SAME three `sourceSection` strings the
+// original `simplify-new-grad` source has always stored (verified live against the DB — do not
+// invent new tab names): "Data Science, AI & Machine Learning", "Quantitative Finance",
+// "Product Management". `sourceSection` must have exactly 3 distinct non-null values after any
+// of these run.
+//
+// `minExpectedPostings` is set to ~50% of a verified live dry-run count for each repo (see the
+// dryRunJobListRepo.ts script) — re-verify before trusting these numbers again, repos churn daily.
+export const jobListRepoSources: JobListRepoConfig[] = [
+  // Existing source, re-expressed in the new config shape. `key` MUST match the existing Source
+  // row's name ("simplify-new-grad", confirmed live in the DB) so its ~107 existing rows don't
+  // get orphaned under a differently-named Source.
+  {
+    key: "simplify-new-grad",
+    readmeUrl: "https://raw.githubusercontent.com/SimplifyJobs/New-Grad-Positions/dev/README.md",
+    tableFormat: "html",
+    sectionHeaderRe: /^##\s+\S+\s+(.+?)\s+New Grad Roles\s*$/,
+    sections: ["Data Science, AI & Machine Learning", "Quantitative Finance", "Product Management"],
+    sectionLabel: {
+      "Data Science, AI & Machine Learning": "Data Science, AI & Machine Learning",
+      "Quantitative Finance": "Quantitative Finance",
+      "Product Management": "Product Management",
+    },
+    sectionCategory: {
+      "Data Science, AI & Machine Learning": "DATA_SCIENCE",
+      "Quantitative Finance": "DATA_SCIENCE",
+      "Product Management": "OTHER",
+    },
+    columns: { company: 0, title: 1, location: 2, apply: 3 },
+    minCells: 4,
+    // Observed live 2026-08-11/12: 83 + 18 + 6 = 107. Floor ~ half.
+    minExpectedPostings: 50,
+  },
+  // Same repo family, internship-scoped sibling of the above — same three sections (just
+  // "Internship Roles" instead of "New Grad Roles" in the header suffix), same category mapping,
+  // same sourceSection strings (no new tabs).
+  {
+    key: "simplify-internships",
+    readmeUrl: "https://raw.githubusercontent.com/SimplifyJobs/Summer2026-Internships/dev/README.md",
+    tableFormat: "html",
+    sectionHeaderRe: /^##\s+\S+\s+(.+?)\s+Internship Roles\s*$/,
+    sections: ["Data Science, AI & Machine Learning", "Quantitative Finance", "Product Management"],
+    sectionLabel: {
+      "Data Science, AI & Machine Learning": "Data Science, AI & Machine Learning",
+      "Quantitative Finance": "Quantitative Finance",
+      "Product Management": "Product Management",
+    },
+    sectionCategory: {
+      "Data Science, AI & Machine Learning": "DATA_SCIENCE",
+      "Quantitative Finance": "DATA_SCIENCE",
+      "Product Management": "OTHER",
+    },
+    columns: { company: 0, title: 1, location: 2, apply: 3 },
+    minCells: 4,
+    // Observed live 2026-08-12 (dry run): 106 + 71 + 24 = 201. Floor ~ half.
+    minExpectedPostings: 100,
+  },
+  // speedyapply/2026-AI-College-Jobs — pipe-markdown, `###` h3 headers, no per-org config shape.
+  // Skips "FAANG+" (heavy overlap with Simplify) and USA/International nav sections. "Other"
+  // needs a title filter since it's not DS/quant-scoped like "Quant" is.
+  {
+    key: "speedyapply-ai",
+    readmeUrl: "https://raw.githubusercontent.com/speedyapply/2026-AI-College-Jobs/main/README.md",
+    tableFormat: "pipe",
+    sectionHeaderRe: /^###\s+(.+?)\s*$/,
+    sections: ["Quant", "Other"],
+    sectionLabel: { Quant: "Quantitative Finance", Other: "Data Science, AI & Machine Learning" },
+    sectionCategory: { Quant: "DATA_SCIENCE", Other: "DATA_SCIENCE" },
+    // Column layout differs per section here (Quant has a Salary column, Other doesn't) — the
+    // adapter's findApplyUrl searches for the `alt="Apply"` image signature across all cells
+    // rather than trusting a single fixed index, so this apply index is only a fallback.
+    columns: { company: 0, title: 1, location: 2, apply: 4, salary: 3 },
+    minCells: 4,
+    titleIncludeRe: /\b(data|machine learning|ml|ai|research|scientist|analyst|quant|statistic)\w*\b/i,
+    // Observed live 2026-08-12 (dry run): Quant 34 + Other (post-filter) 113 = 147. Floor ~ half.
+    minExpectedPostings: 70,
+  },
+  // vanshb03/New-Grad-2026 — flat pipe-markdown table, NO section headers at all. titleIncludeRe
+  // is mandatory here (enforced by the adapter at fetch time) or this would dump ~1078 mostly-SWE
+  // rows into one DS tab.
+  {
+    key: "vansh-new-grad",
+    readmeUrl: "https://raw.githubusercontent.com/vanshb03/New-Grad-2026/main/README.md",
+    tableFormat: "pipe",
+    sectionHeaderRe: null,
+    sections: [FLAT_SECTION],
+    sectionLabel: { [FLAT_SECTION]: "Data Science, AI & Machine Learning" },
+    sectionCategory: { [FLAT_SECTION]: "DATA_SCIENCE" },
+    columns: { company: 0, title: 1, location: 2, apply: 3 },
+    minCells: 4,
+    titleIncludeRe:
+      /\b(data scien|data analy|machine learning|\bml\b|research scientist|quantitative|quant\b|statistic|applied scien|decision scien)/i,
+    titleExcludeRe: /\b(sales|recruit|marketing)\b/i,
+    // Set EMPIRICALLY from a dry run (2026-08-12), not guessed: 108 rows matched the title
+    // filter, 63 of those had a real (non-🔒-locked) apply href. Floor ~ half of 63.
+    minExpectedPostings: 30,
+  },
+];
