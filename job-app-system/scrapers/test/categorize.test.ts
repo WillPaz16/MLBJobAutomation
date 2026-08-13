@@ -168,3 +168,36 @@ describe("categorize's baseball-org detection does not false-positive on a hint 
     expect(categorize("Operations Coordinator", "Cincinnati Reds")).toBe("BASEBALL_OPS");
   });
 });
+
+describe("categorize does not false-positive on a non-MLB employer whose business text legitimately says MLB/baseball", () => {
+  // Susquehanna International Group runs an actual sports-betting/prediction-markets business
+  // line, so its own descriptions legitimately contain "MLB"/"baseball" as real business-domain
+  // terms, not evidence the employer IS an MLB team. Confirmed live: these exact title/org
+  // combinations were mislabeled BASEBALL_RND/BASEBALL_ANALYTICS before the outer isBaseballOrg
+  // gate was scoped to isMlbOrg(organization) (org-name-only) instead of the full haystack.
+  it("does not categorize Susquehanna sports-trading roles as any BASEBALL_* category", () => {
+    expect(
+      categorize(
+        "Sports Trader",
+        "Susquehanna International Group, LLP",
+        "Trade on markets across MLB, NBA, and NFL games, using quantitative models to price risk."
+      )
+    ).not.toMatch(/^BASEBALL_/);
+
+    expect(
+      categorize(
+        "Quantitative Sports Researcher – Graduate Hire",
+        "Susquehanna International Group, LLP",
+        "You'll build models for sports trading, covering baseball, basketball, and football markets."
+      )
+    ).not.toMatch(/^BASEBALL_/);
+
+    expect(
+      categorize(
+        "Quantitative Sports Researcher | Experienced Hire",
+        "Susquehanna International Group, LLP",
+        "Research and analytics supporting our baseball and MLB trading desks."
+      )
+    ).not.toMatch(/^BASEBALL_/);
+  });
+});

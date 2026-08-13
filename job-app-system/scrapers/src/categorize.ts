@@ -68,7 +68,17 @@ export function categorize(
   description?: string
 ): NormalizedPosting["category"] {
   const haystack = `${title} ${organization} ${description ?? ""}`.toLowerCase();
-  const isBaseballOrg = MLB_ORG_HINT_PATTERN.test(haystack);
+  // Org-name-only gate (not the full haystack) so a non-MLB employer whose own business text
+  // legitimately contains "mlb"/"baseball" as real domain vocabulary (e.g. Susquehanna
+  // International Group's sports-betting/prediction-markets line — "Sports Trader",
+  // "Quantitative Sports Researcher" postings whose descriptions say "trade on markets across
+  // MLB, NBA, and NFL games") doesn't get miscategorized as BASEBALL_RND/BASEBALL_ANALYTICS.
+  // The inner department-signal checks below still use the full `haystack` — those legitimately
+  // need description text (e.g. a Dodgers "Junior Product Designer" only reveals itself as
+  // BASEBALL_RND via a description mentioning the R&D team), and isMlbOrg(organization) already
+  // returns true for "Los Angeles Dodgers" from the org name alone, so this doesn't change that
+  // case's outcome.
+  const isBaseballOrg = isMlbOrg(organization);
 
   if (isBaseballOrg) {
     // Bare "development" is deliberately excluded from the R&D check — it over-matches

@@ -6,6 +6,21 @@ import { classifyWorkMode, classifyRegion } from "./location.js";
 import { isMlbOrg } from "./categorize.js";
 import { classifyIsInternship } from "./internship.js";
 
+// GitHub-aggregator READMEs (e.g. SimplifyJobs' New-Grad-Positions) parse company names as free
+// text and can produce multiple variants of the same real employer's name — confirmed live for
+// Susquehanna International Group, which exists as 3 different `organization` strings in the DB:
+// the canonical one from this session's own `sigCareers.ts` adapter, and two aggregator variants.
+// Not exhaustive by nature — extend as more variants are found. Exported so the one-off backfill
+// script (`scripts/normalizeOrganizationNames.ts`) can reuse the same map rather than duplicate it.
+export const ORGANIZATION_ALIASES: Record<string, string> = {
+  "Susquehanna International Group (SIG)": "Susquehanna International Group, LLP",
+  "Susquehanna International Group": "Susquehanna International Group, LLP",
+};
+
+export function normalizeOrganization(organization: string): string {
+  return ORGANIZATION_ALIASES[organization] ?? organization;
+}
+
 // Consecutive scrape runs of an org's source that must miss a posting before it's considered
 // closed — not 1, so a single flaky/partial run can't wrongly close everything from that org.
 const CLOSE_AFTER_MISSED_RUNS = 2;
@@ -27,6 +42,13 @@ export async function getOrCreateSource(name: string, type: string) {
 // runs even when an org legitimately has zero current postings — an empty `postings` array alone
 // can't tell us which org's source just ran, but the caller always knows.
 export async function ingestPostings(sourceId: string, postings: NormalizedPosting[], organization: string) {
+  // Normalize aliased organization names up front — before the dedup lookup, the fuzzy-match
+  // check, and the actual DB write all use it — so every one of those steps agrees on the same
+  // canonical string instead of drifting apart (a mismatch between the lookup step and the write
+  // step would be a new bug, not a fix).
+  organization = normalizeOrganization(organization);
+  postings = postings.map((posting) => ({ ...posting, organization: normalizeOrganization(posting.organization) }));
+
   let inserted = 0;
   let skipped = 0;
   let flaggedDuplicates = 0;

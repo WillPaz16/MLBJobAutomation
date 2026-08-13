@@ -52,7 +52,7 @@ describe("dayforceAdapter", () => {
   it("intercepts the page's own client-side API call and maps postings", async () => {
     const postings = await dayforceAdapter.fetchPostings({
       tenant: "testteam",
-      organizationName: "Test Team",
+      organizationName: "Kansas City Royals",
       baseUrl,
     });
 
@@ -60,7 +60,7 @@ describe("dayforceAdapter", () => {
     expect(postings[0]).toMatchObject({
       externalId: "228",
       title: "Analyst, Player Development - Research & Development",
-      organization: "Test Team",
+      organization: "Kansas City Royals",
       location: "Kansas City, MO",
       category: "BASEBALL_RND",
       url: `${baseUrl}/en-US/testteam/CANDIDATEPORTAL/jobs/228`,

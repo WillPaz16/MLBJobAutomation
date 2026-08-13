@@ -175,14 +175,14 @@ describe("workdayAdapter", () => {
       tenant: "testtenant",
       host: "test.wd5.myworkdayjobs.com",
       site: "TestSite",
-      organizationName: "Test Team",
+      organizationName: "Chicago Cubs",
     });
 
     expect(postings).toHaveLength(1);
     expect(postings[0]).toMatchObject({
       externalId: "R001",
       title: "Baseball Analytics Fellow",
-      organization: "Test Team",
+      organization: "Chicago Cubs",
       location: "City, ST",
       category: "BASEBALL_ANALYTICS",
       url: "https://test.wd5.myworkdayjobs.com/en-US/TestSite/job/City-ST/Baseball-Analytics-Fellow_R001",
@@ -259,14 +259,14 @@ describe("adpAdapter", () => {
     const postings = await adpAdapter.fetchPostings({
       client: "testco",
       cid: "test-cid",
-      organizationName: "Test Team",
+      organizationName: "New York Yankees",
     });
 
     expect(postings).toHaveLength(1);
     expect(postings[0]).toMatchObject({
       externalId: "123_1",
       title: "Data Analyst, Baseball Analytics",
-      organization: "Test Team",
+      organization: "New York Yankees",
       location: "The Bronx, NY, US",
       category: "BASEBALL_ANALYTICS",
     });
@@ -307,14 +307,14 @@ describe("ukgAdapter", () => {
       host: "test.ukg.example",
       tenant: "testtenant",
       boardId: "board-1",
-      organizationName: "Test Team",
+      organizationName: "Los Angeles Dodgers",
     });
 
     expect(postings).toHaveLength(1);
     expect(postings[0]).toMatchObject({
       externalId: "opp-1",
       title: "Baseball R&D Software Engineer",
-      organization: "Test Team",
+      organization: "Los Angeles Dodgers",
       location: "Los Angeles, CA",
       category: "BASEBALL_RND",
     });
@@ -363,14 +363,14 @@ describe("bambooHrAdapter", () => {
 
     const postings = await bambooHrAdapter.fetchPostings({
       company: "testco",
-      organizationName: "Test Team",
+      organizationName: "Toronto Blue Jays",
     });
 
     expect(postings).toHaveLength(1);
     expect(postings[0]).toMatchObject({
       externalId: "42",
       title: "Baseball Analytics Fellow",
-      organization: "Test Team",
+      organization: "Toronto Blue Jays",
       location: "Toronto, Ontario",
       category: "BASEBALL_ANALYTICS",
       url: "https://testco.bamboohr.com/careers/42",
@@ -429,14 +429,14 @@ describe("aaimtrackAdapter", () => {
     const postings = await aaimtrackAdapter.fetchPostings({
       subdomain: "testco",
       domainId: "1234",
-      organizationName: "Test Team",
+      organizationName: "St. Louis Cardinals",
     });
 
     expect(postings).toHaveLength(1);
     expect(postings[0]).toMatchObject({
       externalId: "999",
       title: "Baseball Analytics Fellow",
-      organization: "Test Team",
+      organization: "St. Louis Cardinals",
       location: "St. Louis, Missouri",
       category: "BASEBALL_ANALYTICS",
       url: "https://testco.aaimtrack.com/jobs/999",
@@ -496,14 +496,14 @@ describe("teamworkOnlineAdapter", () => {
 
     const postings = await teamworkOnlineAdapter.fetchPostings({
       orgPath: "testorg/testorg",
-      organizationName: "Test Team",
+      organizationName: "Miami Marlins",
     });
 
     expect(postings).toHaveLength(1);
     expect(postings[0]).toMatchObject({
       externalId: "2181938",
       title: "Data Analyst, Baseball Operations",
-      organization: "Test Team",
+      organization: "Miami Marlins",
       location: "Miami, FL",
       category: "BASEBALL_ANALYTICS",
       url: "https://www.teamworkonline.com/baseball-jobs/testorg/testorg/data-analyst-baseball-2181938",
