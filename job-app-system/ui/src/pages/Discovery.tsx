@@ -938,7 +938,16 @@ export function Discovery() {
                 <CardContent>
                   <div className="mb-3 flex flex-wrap items-center gap-1.5">
                     <Badge variant="secondary">{CATEGORY_LABELS[p.category]}</Badge>
-                    {p.seniority && <Badge variant="secondary">{SENIORITY_LABELS[p.seniority] ?? p.seniority}</Badge>}
+                    {/* Internship is shown instead of (not alongside) a seniority badge: an
+                        internship's seniority is null by design (see scrapers/src/seniority.ts —
+                        it's a separate axis, not a rung on the ladder), so without this the badge
+                        that used to say "Entry level" for these postings would just silently
+                        vanish with nothing replacing it. */}
+                    {p.isInternship ? (
+                      <Badge variant="secondary">Internship</Badge>
+                    ) : (
+                      p.seniority && <Badge variant="secondary">{SENIORITY_LABELS[p.seniority] ?? p.seniority}</Badge>
+                    )}
                     {p.workMode && <Badge variant="secondary">{WORK_MODE_LABELS[p.workMode] ?? p.workMode}</Badge>}
                     {p.region && <Badge variant="secondary">{REGION_LABELS[p.region] ?? p.region}</Badge>}
                     {p.fitScore != null && (
