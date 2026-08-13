@@ -64,6 +64,37 @@ export const greenhouseSources: { boardToken?: string; boardTokens?: string[]; o
   // incl. "Data Analyst, Clinical Data Effectiveness", "Data Analyst, Value-Based Care Analytics",
   // "Actuarial Analyst" — real entry-level analyst/actuarial titles, health-insurance analytics.
   { boardToken: "cloverhealth", organizationName: "Clover Health" },
+  // DRW's own careers page (www.drw.com/work-at-drw/listings) is a Next.js app with no visible
+  // ATS signature in its static HTML — but its __NEXT_DATA__ job payload's own `absolute_url`
+  // field (https://job-boards.greenhouse.io/drweng/jobs/<id>) reveals DRW is actually Greenhouse-
+  // hosted under the board token "drweng." Confirmed live 2026-08-13:
+  // boards-api.greenhouse.io/v1/boards/drweng/jobs?content=true returns 159 jobs — the exact same
+  // count as DRW's own site listing — so no separate DRW-specific adapter/detail-fetch is needed
+  // at all; this is just another Greenhouse board.
+  { boardToken: "drweng", organizationName: "DRW" },
+];
+
+// SIG careers.sig.com's own job-search widget API — a job-search-widget-in-front-of-iCIMS
+// platform, not the iCIMS apply page itself. Single org today, but kept as a config-driven array
+// (rather than a bare object) for consistency with the rest of this file and in case another
+// employer turns up on the same widget platform later.
+// careers.sig.com/api/jobs?page=1&sortBy=relevance&descending=false&internal=false —
+// curl-verified live 2026-08-13 with a real browser User-Agent (246 live jobs at the time).
+export const sigCareersSources: { organizationName: string }[] = [
+  { organizationName: "Susquehanna International Group, LLP" },
+];
+
+// Optiver's own careers JSON API (optiver.com/en/api/v1/jobs) — curl-verified live 2026-08-13
+// (184 live jobs at the time; the boards-api.greenhouse.io/v1/boards/optiver/jobs token that also
+// exists returns 0 jobs and appears stale/unused — this API is the real live source). Single org
+// today, kept as a config-driven array for consistency with the rest of this file.
+export const optiverSources: { organizationName: string }[] = [{ organizationName: "Optiver" }];
+
+// Pinpoint ATS — a distinct platform (like BambooHR/aaimtrack), config-driven by subdomain.
+// wolve.pinpointhq.com/postings.json — curl-verified live 2026-08-13 (14 live jobs, full field
+// shape inspected live, no pagination metadata/headers — a bare `{data: [...]}` per org's board).
+export const pinpointSources: { subdomain: string; organizationName: string }[] = [
+  { subdomain: "wolve", organizationName: "Wolverine Trading" },
 ];
 
 // Lever: find an org's site slug from their careers page URL: jobs.lever.co/<site>.
@@ -288,20 +319,21 @@ export const teamPageSources: {
 //     a description-enhancement layer, not the underlying ATS — the real ATS behind it wasn't
 //     identified via curl alone (client-rendered). Needs Playwright network capture to find the
 //     real API before it can be added; not confirmed blocked.
-//   - Susquehanna / SIG (sig.com/careers): careers page returns 200 but no ATS platform signature
-//     (Greenhouse/Lever/Workday/etc.) found in the static HTML — likely client-rendered. Needs
-//     Playwright network capture to find the real API; not confirmed blocked.
-//   - DRW (drw.com/careers): Next.js app, static HTML has no ATS platform signature either.
-//     Needs Playwright network capture to find the real API; not confirmed blocked.
-//   - Optiver (optiver.com/join-us/jobs): a `boards-api.greenhouse.io/v1/boards/optiver/jobs`
-//     token exists and returns valid JSON (200) but with zero jobs (`{"jobs":[],"meta":
-//     {"total":0}}`) — the site's actual careers page shows no Greenhouse reference and looks
-//     client-rendered ("No results" search-box text present in static HTML), so that Greenhouse
-//     board may be stale/unused rather than the real source. Not added since it's unclear this is
-//     genuinely their live board; needs Playwright verification against the real careers page
-//     before trusting either the Greenhouse token or the site's own client-rendered listing.
-// None of these five hit a CAPTCHA or a real block — all are "needs more than curl," not dead
-// ends, per the escalation ladder above.
+// SIG, DRW, Optiver, and Wolverine Trading (Pinpoint) were all resolved with a follow-up curl
+// pass (2026-08-13), no Playwright needed for any of them:
+//   - Susquehanna / SIG: careers.sig.com/api/jobs is the site's own job-search-widget API — see
+//     sigCareersSources above.
+//   - DRW: turned out to be Greenhouse-hosted after all (board token "drweng") — the static HTML
+//     has no ATS signature because DRW's own Next.js page wraps the Greenhouse data client-side,
+//     but the underlying job payload's `absolute_url` field reveals the real board. See the
+//     greenhouseSources entry above; no separate DRW adapter needed.
+//   - Optiver: optiver.com/en/api/v1/jobs is a real, live, plain public JSON API (184 jobs) —
+//     separate from the stale/unused `boards-api.greenhouse.io/v1/boards/optiver/jobs` token
+//     that returns zero. See optiverSources above.
+//   - Wolverine Trading: see pinpointSources below — Pinpoint ATS, wolve.pinpointhq.com/
+//     postings.json.
+// Peak6 remains the one genuine holdout — needs Playwright network capture to intercept its
+// live-loaded token, deliberately not pursued this round.
 
 // GitHub job-list repos (adapters/jobListRepo.ts) — community-maintained READMEs tracking
 // new-grad/internship tech/DS/quant/PM roles across 50+ companies per repo. Structurally

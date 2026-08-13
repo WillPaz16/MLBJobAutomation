@@ -1,4 +1,7 @@
 import { greenhouseAdapter } from "./adapters/greenhouse.js";
+import { sigCareersAdapter } from "./adapters/sigCareers.js";
+import { optiverAdapter } from "./adapters/optiver.js";
+import { pinpointAdapter } from "./adapters/pinpoint.js";
 import { leverAdapter } from "./adapters/lever.js";
 import { workdayAdapter } from "./adapters/workday.js";
 import { adpAdapter } from "./adapters/adp.js";
@@ -11,6 +14,9 @@ import { teamPageAdapter } from "./adapters/teamPage.js";
 import { jobListRepoAdapter, type JobListRepoConfig } from "./adapters/jobListRepo.js";
 import {
   greenhouseSources,
+  sigCareersSources,
+  optiverSources,
+  pinpointSources,
   leverSources,
   workdaySources,
   adpSources,
@@ -159,6 +165,9 @@ export async function runJobListRepoAdapter(cfg: JobListRepoConfig): Promise<num
 async function main() {
   const results = await Promise.all([
     runAdapter(greenhouseAdapter, greenhouseSources),
+    runAdapter(sigCareersAdapter, sigCareersSources),
+    runAdapter(optiverAdapter, optiverSources),
+    runAdapter(pinpointAdapter, pinpointSources),
     runAdapter(leverAdapter, leverSources),
     runAdapter(workdayAdapter, workdaySources),
     runAdapter(adpAdapter, adpSources),

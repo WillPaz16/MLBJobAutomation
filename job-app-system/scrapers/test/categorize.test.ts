@@ -137,3 +137,34 @@ describe("isMlbOrg", () => {
     expect(isMlbOrg("Athletics Corp")).toBe(true);
   });
 });
+
+describe("categorize's baseball-org detection does not false-positive on a hint appearing inside an unrelated word", () => {
+  // Real case, caught live: a DRW (non-baseball) job description containing "hundreds of
+  // terabytes" got tagged BASEBALL_RND, because plain substring matching found "reds" inside
+  // "hundreds". Word-boundary matching (categorize.ts's MLB_ORG_HINT_PATTERN) fixes this without
+  // touching any of the intentional whole-word matches tested above.
+  it("does not match a short hint embedded in a longer, unrelated word", () => {
+    // Title carries real DATA_SCIENCE signal ("Machine Learning"), so it's correctly not OTHER —
+    // the actual regression check is that it does NOT get BASEBALL_RND from "reds" inside
+    // "hundreds" in the description.
+    expect(
+      categorize(
+        "Machine Learning Engineer",
+        "DRW",
+        "Build infrastructure for running ML algorithms on hundreds of terabytes of data."
+      )
+    ).toBe("DATA_SCIENCE");
+    expect(
+      categorize(
+        "Systems Administrator",
+        "DRW",
+        "Build infrastructure for running ML algorithms on hundreds of terabytes of data."
+      )
+    ).toBe("OTHER");
+  });
+
+  it("still matches the same hint as a real whole word", () => {
+    expect(categorize("Guest Services Associate", "Cincinnati Reds")).toBe("OTHER");
+    expect(categorize("Operations Coordinator", "Cincinnati Reds")).toBe("BASEBALL_OPS");
+  });
+});

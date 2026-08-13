@@ -35,17 +35,31 @@ export const MLB_ORG_HINTS = [
   "diamondbacks",
 ];
 
+// Word-boundary matching for the hint list, same escaping convention api/src/fitScore.ts's
+// buildSkillRegex already uses for this exact class of bug. Plain .includes() let a hint as
+// short as "reds" match inside an unrelated word ("hundreds") — harmless against a short,
+// curated organization name (isMlbOrg's own surface), but a real, observed false-positive risk
+// against full natural-language job descriptions (categorize()'s surface), which are long
+// enough to contain "reds"/"mets"/"rays"/etc. as an accidental substring somewhere. Checked this
+// doesn't change any existing intentional-substring test case: "Rangers Applied Sciences",
+// "Braves Trust", and "Athletics Corp" are still whole-word matches under \b, and "Guardian Life
+// Insurance"/"Angel Studios" still don't match because "guardians"/"angels" (with the trailing s)
+// simply isn't present in either string at all — word-boundary-vs-not makes no difference there.
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+const MLB_ORG_HINT_PATTERN = new RegExp(`\\b(${MLB_ORG_HINTS.map(escapeRegex).join("|")})\\b`);
+
 // Whether `organization` (only — not title/description) is an MLB team/org, per the curated
 // hint list above. Deliberately scoped to organization alone: this answers "which COMPANY
 // posted this job," not "what is this role about" — a non-baseball org's posting whose title or
 // description happens to mention a team name (e.g. "Rangers") shouldn't count. This is a
 // separate, additional export from categorize()'s own internal full-haystack (title+org+
 // description) isBaseballOrg check used for category assignment — the two intentionally answer
-// different questions, and categorize()'s logic is left exactly as-is to avoid any risk of
-// changing its category-assignment behavior.
+// different questions, and categorize()'s category-assignment logic is otherwise left as-is.
 export function isMlbOrg(organization: string): boolean {
-  const haystack = organization.toLowerCase();
-  return MLB_ORG_HINTS.some((hint) => haystack.includes(hint));
+  return MLB_ORG_HINT_PATTERN.test(organization.toLowerCase());
 }
 
 export function categorize(
@@ -54,7 +68,7 @@ export function categorize(
   description?: string
 ): NormalizedPosting["category"] {
   const haystack = `${title} ${organization} ${description ?? ""}`.toLowerCase();
-  const isBaseballOrg = MLB_ORG_HINTS.some((hint) => haystack.includes(hint));
+  const isBaseballOrg = MLB_ORG_HINT_PATTERN.test(haystack);
 
   if (isBaseballOrg) {
     // Bare "development" is deliberately excluded from the R&D check — it over-matches
