@@ -77,6 +77,7 @@ export const api = {
       seniority?: string;
       workMode?: string;
       region?: string;
+      educationRequirement?: string;
       minFit?: number;
       isMlbTeam?: boolean;
       sourceSection?: string;
@@ -123,6 +124,7 @@ export const api = {
         seniorities: string[];
         workModes: string[];
         regions: string[];
+        educationRequirements: string[];
         mlbTeamCounts: { true: number; false: number };
         sourceSectionCounts: Record<string, number>;
         categoryCounts: Record<string, number>;

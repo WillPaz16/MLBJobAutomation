@@ -5,6 +5,7 @@ import { classifySeniority } from "./seniority.js";
 import { classifyWorkMode, classifyRegion } from "./location.js";
 import { isMlbOrg } from "./categorize.js";
 import { classifyIsInternship } from "./internship.js";
+import { classifyEducationRequirement } from "./education.js";
 
 // GitHub-aggregator READMEs (e.g. SimplifyJobs' New-Grad-Positions) parse company names as free
 // text and can produce multiple variants of the same real employer's name — confirmed live for
@@ -104,6 +105,10 @@ export async function ingestPostings(sourceId: string, postings: NormalizedPosti
           // regex can improve over time even though the title itself rarely changes for an
           // already-seen posting.
           isInternship: classifyIsInternship(posting.title),
+          // Same re-compute-every-scrape treatment, for the same reason: classifyEducationRequirement's
+          // regex buckets can improve over time even though title/description rarely change for an
+          // already-seen posting.
+          educationRequirement: classifyEducationRequirement(posting.title, posting.description),
           // Simple pass-through, like title/url — always overwrite from the latest adapter
           // output rather than fill-only/recompute, since it's just structural metadata about
           // which source section a row came from (not a derived classifier that can "improve").
@@ -134,6 +139,7 @@ export async function ingestPostings(sourceId: string, postings: NormalizedPosti
         region: classifyRegion(posting.location ?? null),
         isMlbTeam: isMlbOrg(posting.organization),
         isInternship: classifyIsInternship(posting.title),
+        educationRequirement: classifyEducationRequirement(posting.title, posting.description),
         sourceSection: posting.sourceSection ?? null,
         url: posting.url,
         description: posting.description,

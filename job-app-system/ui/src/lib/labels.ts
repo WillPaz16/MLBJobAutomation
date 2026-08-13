@@ -81,6 +81,28 @@ export const WORK_MODE_FILTER_OPTIONS: { value: string; label: string }[] = [
   ...WORK_MODE_OPTIONS,
 ];
 
+// Education requirement is a fixed 4-value enum surfaced by the API
+// (`Posting.educationRequirement`) — same hardcoded pattern as SENIORITY_LABELS above.
+export const EDUCATION_REQUIREMENT_LABELS: Record<string, string> = {
+  NONE: "No degree",
+  BACHELORS: "Bachelor's",
+  MASTERS: "Master's",
+  PHD: "PhD",
+};
+
+export const EDUCATION_REQUIREMENT_ORDER: string[] = ["NONE", "BACHELORS", "MASTERS", "PHD"];
+
+export const EDUCATION_REQUIREMENT_OPTIONS: { value: string; label: string }[] =
+  EDUCATION_REQUIREMENT_ORDER.map((value) => ({
+    value,
+    label: EDUCATION_REQUIREMENT_LABELS[value],
+  }));
+
+export const EDUCATION_REQUIREMENT_FILTER_OPTIONS: { value: string; label: string }[] = [
+  { value: "all", label: "Any" },
+  ...EDUCATION_REQUIREMENT_OPTIONS,
+];
+
 // isInternship is a boolean (`Posting.isInternship`) surfaced as a 3-state filter control — same
 // "all" + real-value shape as WORK_MODE_FILTER_OPTIONS/REGION_FILTER_OPTIONS above, but the two
 // real values are the string-coerced booleans the API's "true"/"false" query-param pattern
@@ -224,6 +246,7 @@ export const DISCOVERY_FILTER_NAMES: Record<string, string> = {
   seniority: "Level",
   workMode: "Work mode",
   region: "Region",
+  educationRequirement: "Education requirement",
   isInternship: "Role type",
   location: "Location",
   search: "Search",

@@ -132,6 +132,7 @@ postingsRouter.get(
       seniority,
       workMode,
       region,
+      educationRequirement,
       location,
       remoteOnly,
       q,
@@ -177,6 +178,9 @@ postingsRouter.get(
       // can never disagree with what the live substring check would compute.
       workMode: workMode ? (workMode as string) : undefined,
       region: region ? (region as string) : undefined,
+      // Exact-match filter on the classifier in scrapers/src/education.ts, same pattern as
+      // seniority/workMode/region above.
+      educationRequirement: educationRequirement ? (educationRequirement as string) : undefined,
       // Matches the existing free-text `location` contains-filter's case sensitivity exactly
       // (Prisma's default `contains` on SQLite is case-INsensitive-for-ASCII, confirmed live
       // against real data — see the `workMode` comment above, which already had this right) —
@@ -351,6 +355,7 @@ postingsRouter.get(
       seniorityRows,
       workModeRows,
       regionRows,
+      educationRequirementRows,
       mlbTeamTrueCount,
       mlbTeamFalseCount,
       sourceSectionRows,
@@ -377,6 +382,12 @@ postingsRouter.get(
         select: { region: true },
         distinct: ["region"],
         orderBy: { region: "asc" },
+      }),
+      prisma.posting.findMany({
+        where: { educationRequirement: { not: null } },
+        select: { educationRequirement: true },
+        distinct: ["educationRequirement"],
+        orderBy: { educationRequirement: "asc" },
       }),
       // Unlike the distinct-value lists above, these two are rendered directly as user-facing
       // tab-count numbers (Discovery's Baseball/DS-AI-ML/Quant/PM tabs) — an unscoped count would
@@ -441,6 +452,7 @@ postingsRouter.get(
       seniorities: seniorityRows.map((r) => r.seniority),
       workModes: workModeRows.map((r) => r.workMode),
       regions: regionRows.map((r) => r.region),
+      educationRequirements: educationRequirementRows.map((r) => r.educationRequirement),
       mlbTeamCounts: { true: mlbTeamTrueCount, false: mlbTeamFalseCount },
       sourceSectionCounts,
       categoryCounts,

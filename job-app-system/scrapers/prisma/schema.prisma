@@ -9,6 +9,7 @@ generator client {
 
 // PostingCategory (string): BASEBALL_OPS | BASEBALL_ANALYTICS | BASEBALL_RND | DATA_SCIENCE | OTHER
 // ApplicationStage (string): FOUND | REVIEWING | APPLIED | INTERVIEW | OFFER | REJECTED | WITHDRAWN
+// EducationRequirement (string): NONE | BACHELORS | MASTERS | PHD
 // SQLite has no native enum support in Prisma, so these are validated in the API layer (zod) instead.
 
 model Source {
@@ -32,6 +33,7 @@ model Posting {
   salary        String?  // raw text when a source happens to expose it (rare) — display-only, never parsed/filtered numerically
   workMode      String?  // computed at ingest time, see scrapers/src/location.ts — "REMOTE" | "HYBRID" | "ONSITE" | null (unclassified)
   region        String?  // computed at ingest time, see scrapers/src/location.ts — "USA" | "INTERNATIONAL" | null (unclassified)
+  educationRequirement String? // computed at ingest time, see scrapers/src/education.ts — "NONE" | "BACHELORS" | "MASTERS" | "PHD" | null (unclassified)
   url           String
   description   String?
   postedAt      DateTime?

@@ -23,6 +23,8 @@ import {
   DISCOVERY_TAB_LABELS,
   DISCOVERY_TAB_ORDER,
   DISCOVERY_TAB_SOURCE_SECTIONS,
+  EDUCATION_REQUIREMENT_FILTER_OPTIONS,
+  EDUCATION_REQUIREMENT_LABELS,
   INTERNSHIP_FILTER_OPTIONS,
   MIN_FIT_LABELS,
   MIN_FIT_OPTIONS,
@@ -84,6 +86,7 @@ const CATEGORY_FILTER_LABELS = optionsToLabels(CATEGORY_FILTER_OPTIONS);
 const SENIORITY_FILTER_LABELS = optionsToLabels(SENIORITY_FILTER_OPTIONS);
 const WORK_MODE_FILTER_LABELS = optionsToLabels(WORK_MODE_FILTER_OPTIONS);
 const REGION_FILTER_LABELS = optionsToLabels(REGION_FILTER_OPTIONS);
+const EDUCATION_REQUIREMENT_FILTER_LABELS = optionsToLabels(EDUCATION_REQUIREMENT_FILTER_OPTIONS);
 const INTERNSHIP_LABELS = optionsToLabels(INTERNSHIP_FILTER_OPTIONS);
 
 // Tier-based styling replaces the old numeric-threshold badge coloring now that the API returns
@@ -107,6 +110,7 @@ const ROW_B_KEYS = [
   "location",
   "workMode",
   "region",
+  "educationRequirement",
   "organization",
   "source",
   "status",
@@ -129,6 +133,7 @@ const FILTER_DEFAULTS: Record<string, string> = {
   seniority: "all",
   workMode: "all",
   region: "all",
+  educationRequirement: "all",
   minFit: "none",
   isInternship: "all",
   recency: "any",
@@ -163,6 +168,8 @@ function chipValueLabel(key: string, value: string): string {
       return WORK_MODE_LABELS[value] ?? value;
     case "region":
       return REGION_LABELS[value] ?? value;
+    case "educationRequirement":
+      return EDUCATION_REQUIREMENT_LABELS[value] ?? value;
     case "minFit":
       return MIN_FIT_OPTIONS.find((o) => o.value === value)?.label ?? value;
     case "isInternship":
@@ -347,6 +354,7 @@ export function Discovery() {
         seniority: filters.seniority === "all" ? undefined : filters.seniority,
         workMode: filters.workMode === "all" ? undefined : filters.workMode,
         region: filters.region === "all" ? undefined : filters.region,
+        educationRequirement: filters.educationRequirement === "all" ? undefined : filters.educationRequirement,
         minFit: filters.minFit === "none" ? undefined : Number(filters.minFit),
         // Everything (tab=all) and data-science (tab=data-science, scoped by category alone
         // above): no isMlbTeam/sourceSection scoping at all. Baseball: isMlbTeam true. The other
@@ -929,6 +937,23 @@ export function Discovery() {
                   {SENIORITY_FILTER_OPTIONS.map((s) => (
                     <SelectItem key={s.value} value={s.value}>
                       {s.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FilterField>
+            <FilterField id="filter-education-requirement" label={DISCOVERY_FILTER_NAMES.educationRequirement}>
+              <Select
+                value={filters.educationRequirement}
+                onValueChange={(v) => setFilter("educationRequirement", v ?? "all")}
+              >
+                <SelectTrigger id="filter-education-requirement" className="w-full">
+                  <SelectValue labels={EDUCATION_REQUIREMENT_FILTER_LABELS} />
+                </SelectTrigger>
+                <SelectContent>
+                  {EDUCATION_REQUIREMENT_FILTER_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
                     </SelectItem>
                   ))}
                 </SelectContent>

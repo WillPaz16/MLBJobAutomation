@@ -52,6 +52,14 @@ describe("api client", () => {
     expect(calledUrl).toContain("minFit=40");
   });
 
+  it("passes educationRequirement through as a query param", async () => {
+    const fetchMock = mockFetch({ ok: true, jsonBody: [] });
+    vi.stubGlobal("fetch", fetchMock);
+    await api.postings.list({ educationRequirement: "MASTERS" });
+    const calledUrl = fetchMock.mock.calls[0][0] as string;
+    expect(calledUrl).toContain("educationRequirement=MASTERS");
+  });
+
   it("throws an ApiError with the server's error message on failure", async () => {
     vi.stubGlobal(
       "fetch",

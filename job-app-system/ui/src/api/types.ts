@@ -32,6 +32,7 @@ export interface Posting {
   seniority: string | null;
   workMode: string | null;
   region: string | null;
+  educationRequirement: string | null;
   salary: string | null;
   url: string;
   description: string | null;

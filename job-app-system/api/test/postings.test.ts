@@ -82,6 +82,14 @@ describe("GET /api/postings", () => {
     expect(res.body[0].title).toBe("Senior role");
   });
 
+  it("filters by educationRequirement", async () => {
+    await createPosting({ educationRequirement: "MASTERS", title: "Master's role" });
+    await createPosting({ educationRequirement: "BACHELORS", title: "Bachelor's role" });
+    const res = await request(app).get("/api/postings?educationRequirement=MASTERS");
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].title).toBe("Master's role");
+  });
+
   it("filters by workMode", async () => {
     await createPosting({ workMode: "REMOTE", title: "Remote role" });
     await createPosting({ workMode: "ONSITE", title: "Onsite role" });
