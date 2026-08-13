@@ -26,6 +26,7 @@ vi.mock("../src/api/client", () => ({
           "Quantitative Finance": 18,
           "Product Management": 6,
         },
+        categoryCounts: { DATA_SCIENCE: 241 },
         allActiveCount: 400,
         sourceTypes: ["greenhouse", "lever"],
       }),
@@ -152,6 +153,44 @@ describe("Discovery URL-driven filters", () => {
         })
       )
     );
+  });
+
+  // v11 Phase 3 — the category-driven "Data Science (All Sources)" tab, a source-agnostic view
+  // distinct from the SimplifyJobs-aggregator-only "ds-ai-ml" tab above.
+  it("sends category=DATA_SCIENCE and no isMlbTeam/sourceSection scoping for the data-science tab", async () => {
+    listMock.mockClear();
+    renderDiscovery(["/discovery?tab=data-science"]);
+    await waitFor(() => expect(listMock).toHaveBeenCalledTimes(1));
+    expect(listMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        category: "DATA_SCIENCE",
+        isMlbTeam: undefined,
+        sourceSection: undefined,
+      })
+    );
+  });
+
+  it("ignores the category filter param and still fixes category=DATA_SCIENCE on the data-science tab", async () => {
+    listMock.mockClear();
+    renderDiscovery(["/discovery?tab=data-science&category=BASEBALL_OPS"]);
+    await waitFor(() => expect(listMock).toHaveBeenCalledTimes(1));
+    expect(listMock).toHaveBeenCalledWith(expect.objectContaining({ category: "DATA_SCIENCE" }));
+  });
+
+  it("hides the in-tab category filter dropdown while the data-science tab is active", async () => {
+    listMock.mockClear();
+    renderDiscovery(["/discovery?tab=data-science"]);
+    await waitFor(() => expect(listMock).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: /More filters/i }));
+    expect(screen.queryByLabelText(/^Category$/i)).not.toBeInTheDocument();
+  });
+
+  it("shows the in-tab category filter dropdown on other tabs (e.g. Baseball)", async () => {
+    listMock.mockClear();
+    renderDiscovery(["/discovery"]);
+    await waitFor(() => expect(listMock).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: /More filters/i }));
+    expect(screen.getByLabelText(/^Category$/i)).toBeInTheDocument();
   });
 });
 

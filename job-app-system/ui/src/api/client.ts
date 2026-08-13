@@ -125,6 +125,7 @@ export const api = {
         regions: string[];
         mlbTeamCounts: { true: number; false: number };
         sourceSectionCounts: Record<string, number>;
+        categoryCounts: Record<string, number>;
         internshipCounts: { true: number; false: number };
         allActiveCount: number;
         sourceTypes: string[];

@@ -19,6 +19,7 @@ import {
   CATEGORY_LABELS,
   DEFAULT_SORT,
   DISCOVERY_FILTER_NAMES,
+  DISCOVERY_TAB_CATEGORY,
   DISCOVERY_TAB_LABELS,
   DISCOVERY_TAB_ORDER,
   DISCOVERY_TAB_SOURCE_SECTIONS,
@@ -231,6 +232,7 @@ export function Discovery() {
     "ds-ai-ml": 0,
     quant: 0,
     pm: 0,
+    "data-science": 0,
   });
   const [total, setTotal] = useState(0);
   const [fitCohortSize, setFitCohortSize] = useState<number | null>(null);
@@ -262,6 +264,9 @@ export function Discovery() {
   const debouncedSearch = useDebounced(searchInput, 300);
 
   const pageSize = Number(filters.pageSize) || 25;
+  // Derived once for both load() and render (e.g. hiding the redundant category filter below)
+  // rather than recomputing the same "?? baseball" fallback in each place.
+  const currentTab = (filters.tab as DiscoveryTab) ?? "baseball";
 
   // Extracted so every place that resets these two debounced text inputs (chip-clear, Clear all,
   // and applying a saved search) goes through one function — previously this reseed was
@@ -319,14 +324,18 @@ export function Discovery() {
     setLoading(true);
     setError(null);
     try {
-      const tab = (filters.tab as DiscoveryTab) ?? "baseball";
+      const tab = currentTab;
       const recencyDays = filters.recency !== "any" ? Number(filters.recency) : undefined;
       const discoveredAfter =
         recencyDays !== undefined && !Number.isNaN(recencyDays)
           ? new Date(Date.now() - recencyDays * 86_400_000).toISOString()
           : undefined;
+      // The "data-science" tab fixes category to DATA_SCIENCE itself, overriding whatever the
+      // in-tab category filter dropdown holds (that dropdown is hidden while this tab is active —
+      // see the Row-B category FilterField below — so there's no way for the two to disagree in
+      // practice, but the tab's own scoping takes precedence here regardless).
       const { postings: data, total: newTotal, fitCohortSize: cohortSize } = await api.postings.list({
-        category: filters.category === "all" ? undefined : filters.category,
+        category: tab === "data-science" ? DISCOVERY_TAB_CATEGORY : filters.category === "all" ? undefined : filters.category,
         location: filters.location || undefined,
         q: filters.search || undefined,
         organization: filters.organization === "all" ? undefined : filters.organization,
@@ -339,11 +348,15 @@ export function Discovery() {
         workMode: filters.workMode === "all" ? undefined : filters.workMode,
         region: filters.region === "all" ? undefined : filters.region,
         minFit: filters.minFit === "none" ? undefined : Number(filters.minFit),
-        // Everything (tab=all): no isMlbTeam/sourceSection scoping at all. Baseball: isMlbTeam
-        // true. The other three tabs: isMlbTeam false + their sourceSection value (isMlbTeam:false
-        // is redundant with sourceSection in practice, but harmless and matches prior behavior).
-        isMlbTeam: tab === "all" ? undefined : tab === "baseball",
-        sourceSection: tab === "baseball" || tab === "all" ? undefined : DISCOVERY_TAB_SOURCE_SECTIONS[tab],
+        // Everything (tab=all) and data-science (tab=data-science, scoped by category alone
+        // above): no isMlbTeam/sourceSection scoping at all. Baseball: isMlbTeam true. The other
+        // three tabs: isMlbTeam false + their sourceSection value (isMlbTeam:false is redundant
+        // with sourceSection in practice, but harmless and matches prior behavior).
+        isMlbTeam: tab === "all" || tab === "data-science" ? undefined : tab === "baseball",
+        sourceSection:
+          tab === "baseball" || tab === "all" || tab === "data-science"
+            ? undefined
+            : DISCOVERY_TAB_SOURCE_SECTIONS[tab],
         isInternship: filters.isInternship === "all" ? undefined : filters.isInternship,
         discoveredAfter,
         excludeInPipeline: filters.excludeInPipeline === "true" ? true : undefined,
@@ -410,6 +423,7 @@ export function Discovery() {
           "ds-ai-ml": facets.sourceSectionCounts["Data Science, AI & Machine Learning"] ?? 0,
           quant: facets.sourceSectionCounts["Quantitative Finance"] ?? 0,
           pm: facets.sourceSectionCounts["Product Management"] ?? 0,
+          "data-science": facets.categoryCounts?.DATA_SCIENCE ?? 0,
         });
         setSourceTypes(facets.sourceTypes ?? []);
       })
@@ -887,20 +901,25 @@ export function Discovery() {
         <div className="mb-3 grid grid-cols-1 gap-4 rounded-lg border bg-muted/20 p-3 lg:grid-cols-3">
           <fieldset className="space-y-3">
             <legend className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">What</legend>
-            <FilterField id="filter-category" label={DISCOVERY_FILTER_NAMES.category}>
-              <Select value={filters.category} onValueChange={(v) => setFilter("category", v ?? "all")}>
-                <SelectTrigger id="filter-category" className="w-full">
-                  <SelectValue labels={CATEGORY_FILTER_LABELS} />
-                </SelectTrigger>
-                <SelectContent>
-                  {CATEGORY_FILTER_OPTIONS.map((c) => (
-                    <SelectItem key={c.value} value={c.value}>
-                      {c.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </FilterField>
+            {/* Hidden while the data-science tab is active — that tab already fixes category to
+                DATA_SCIENCE itself (see load() above), so showing this dropdown would be
+                redundant at best and, if changed, would silently contradict the tab's own point. */}
+            {currentTab !== "data-science" && (
+              <FilterField id="filter-category" label={DISCOVERY_FILTER_NAMES.category}>
+                <Select value={filters.category} onValueChange={(v) => setFilter("category", v ?? "all")}>
+                  <SelectTrigger id="filter-category" className="w-full">
+                    <SelectValue labels={CATEGORY_FILTER_LABELS} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CATEGORY_FILTER_OPTIONS.map((c) => (
+                      <SelectItem key={c.value} value={c.value}>
+                        {c.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FilterField>
+            )}
             <FilterField id="filter-seniority" label={DISCOVERY_FILTER_NAMES.seniority}>
               <Select value={filters.seniority} onValueChange={(v) => setFilter("seniority", v ?? "all")}>
                 <SelectTrigger id="filter-seniority" className="w-full">

@@ -111,11 +111,14 @@ export const REGION_FILTER_OPTIONS: { value: string; label: string }[] = [
 ];
 
 // Discovery's top-level view tabs — a Baseball/MLB tab (isMlbTeam=true), 3 tabs for the
-// SimplifyJobs new-grad list's non-MLB sourceSection values (see newGradList.ts), and "all"
+// SimplifyJobs new-grad list's non-MLB sourceSection values (see newGradList.ts), "all"
 // (Everything — no isMlbTeam/sourceSection scoping at all, the 40-active-postings-unreachable-
-// through-any-tab gap the v8 plan measured). Keys are short and URL-friendly; values map to the
-// isMlbTeam/sourceSection params Discovery.tsx sends to GET /api/postings.
-export type DiscoveryTab = "all" | "baseball" | "ds-ai-ml" | "quant" | "pm";
+// through-any-tab gap the v8 plan measured), and "data-science" (v11 Phase 3 — a category-driven
+// tab: `category=DATA_SCIENCE`, independent of isMlbTeam/sourceSection, so it surfaces correctly-
+// tagged DATA_SCIENCE postings from EVERY source, aggregator or direct-org, not just the
+// SimplifyJobs-sourced "ds-ai-ml" tab). Keys are short and URL-friendly; values map to the
+// isMlbTeam/sourceSection/category params Discovery.tsx sends to GET /api/postings.
+export type DiscoveryTab = "all" | "baseball" | "ds-ai-ml" | "quant" | "pm" | "data-science";
 
 export const DISCOVERY_TAB_LABELS: Record<DiscoveryTab, string> = {
   all: "Everything",
@@ -123,20 +126,32 @@ export const DISCOVERY_TAB_LABELS: Record<DiscoveryTab, string> = {
   "ds-ai-ml": "Data Science & AI/ML",
   quant: "Quantitative Finance",
   pm: "Product Management",
+  // Deliberately distinct wording from "ds-ai-ml"'s label above — that tab is the SimplifyJobs
+  // aggregator's own section, this tab is the category-driven, source-agnostic view (every
+  // Posting tagged category=DATA_SCIENCE, from any adapter). "(All Sources)" is the disambiguator
+  // so the two never look like duplicates in the tab bar.
+  "data-science": "Data Science (All Sources)",
 };
 
 // "all" is placed FIRST (the plan's explicit placement), but FILTER_DEFAULTS.tab in Discovery.tsx
-// deliberately stays "baseball" — adding this tab must not silently change the default landing
-// view.
-export const DISCOVERY_TAB_ORDER: DiscoveryTab[] = ["all", "baseball", "ds-ai-ml", "quant", "pm"];
+// deliberately stays "baseball" — adding tabs must not silently change the default landing view.
+export const DISCOVERY_TAB_ORDER: DiscoveryTab[] = ["all", "baseball", "ds-ai-ml", "quant", "pm", "data-science"];
 
 // The exact sourceSection string values the API expects/returns for the 3 non-baseball,
-// non-"all" tabs.
-export const DISCOVERY_TAB_SOURCE_SECTIONS: Record<Exclude<DiscoveryTab, "baseball" | "all">, string> = {
+// non-"all", non-"data-science" tabs ("data-science" scopes on `category` instead — see
+// DISCOVERY_TAB_CATEGORY below).
+export const DISCOVERY_TAB_SOURCE_SECTIONS: Record<
+  Exclude<DiscoveryTab, "baseball" | "all" | "data-science">,
+  string
+> = {
   "ds-ai-ml": "Data Science, AI & Machine Learning",
   quant: "Quantitative Finance",
   pm: "Product Management",
 };
+
+// The fixed Posting.category value the "data-science" tab scopes to — a plain constant (not a
+// per-tab record) since it's the only tab scoped by category rather than isMlbTeam/sourceSection.
+export const DISCOVERY_TAB_CATEGORY: PostingCategory = "DATA_SCIENCE";
 
 // Moved here from Discovery.tsx (was a local const there) as part of the label consolidation —
 // every Select-trigger label map now lives in one file, `optionsToLabels` doing the

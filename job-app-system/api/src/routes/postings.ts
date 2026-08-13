@@ -354,6 +354,7 @@ postingsRouter.get(
       mlbTeamTrueCount,
       mlbTeamFalseCount,
       sourceSectionRows,
+      categoryRows,
       internshipTrueCount,
       internshipFalseCount,
       allActiveCount,
@@ -392,6 +393,15 @@ postingsRouter.get(
         where: { sourceSection: { not: null }, closedAt: null, dismissedAt: null },
         _count: { sourceSection: true },
       }),
+      // Powers Discovery's category-driven "Data Science (All Sources)" tab count (v11 Phase 3) —
+      // same active/undismissed scope as mlbTeamCounts/sourceSectionCounts above, so the tab label
+      // matches what the tab's own request (category=DATA_SCIENCE, no isMlbTeam/sourceSection
+      // scoping) actually returns.
+      prisma.posting.groupBy({
+        by: ["category"],
+        where: { closedAt: null, dismissedAt: null },
+        _count: { category: true },
+      }),
       // Same scope as mlbTeamCounts/sourceSectionCounts above (active, not dismissed) — the
       // isMlbTeam facet-scoping bug (one count using a different scope than its siblings) is a
       // documented past mistake in this file; isInternship's counts deliberately match exactly.
@@ -417,6 +427,10 @@ postingsRouter.get(
     for (const row of sourceSectionRows) {
       if (row.sourceSection) sourceSectionCounts[row.sourceSection] = row._count.sourceSection;
     }
+    const categoryCounts: Record<string, number> = {};
+    for (const row of categoryRows) {
+      categoryCounts[row.category] = row._count.category;
+    }
     const activeSourceRows = await prisma.source.findMany({
       where: { id: { in: inUseSourceIdRows.map((r) => r.sourceId) } },
       select: { type: true },
@@ -429,6 +443,7 @@ postingsRouter.get(
       regions: regionRows.map((r) => r.region),
       mlbTeamCounts: { true: mlbTeamTrueCount, false: mlbTeamFalseCount },
       sourceSectionCounts,
+      categoryCounts,
       internshipCounts: { true: internshipTrueCount, false: internshipFalseCount },
       allActiveCount,
       sourceTypes: activeSourceRows.map((r) => r.type),
