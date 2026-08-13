@@ -1108,43 +1108,34 @@ export function Discovery() {
           <DropdownMenuContent align="end" className="min-w-64">
             <DropdownMenuItem onClick={() => setSaveDialogOpen(true)}>Save current view…</DropdownMenuItem>
             {savedSearches.length > 0 && <DropdownMenuSeparator />}
-            {savedSearches.map((saved) => (
-              <DropdownMenuItem
-                key={saved.id}
-                onClick={() => applySavedSearch(saved)}
-                className="justify-between gap-2"
-              >
-                <span className="flex items-center gap-1.5 truncate">
+            {/* Each saved search gets three SEPARATE top-level menu items (apply/default/delete)
+                instead of nesting the star/delete buttons inside one DropdownMenuItem — Base UI's
+                menu arrow-key navigation only moves between top-level items and can't reach
+                interactive elements nested inside another interactive element (invalid HTML besides
+                being mouse-only). Splitting them out keeps every action individually reachable via
+                the menu's normal keyboard flow with no nesting. */}
+            {savedSearches.map((saved, i) => (
+              <div key={saved.id}>
+                {i > 0 && <DropdownMenuSeparator />}
+                <DropdownMenuItem onClick={() => applySavedSearch(saved)} className="gap-1.5">
                   {saved.isDefault && <Star className="h-3 w-3 shrink-0 fill-current text-amber-500" />}
-                  <span className="truncate">{saved.name}</span>
-                </span>
-                <span className="flex shrink-0 items-center gap-0.5">
-                  <button
-                    type="button"
-                    aria-label={saved.isDefault ? `Unset ${saved.name} as default` : `Set ${saved.name} as default`}
-                    title={saved.isDefault ? "Unset as default" : "Set as default"}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSearchDefault(saved);
-                    }}
-                    className="rounded p-1 hover:bg-muted-foreground/20"
-                  >
-                    <Star className={`h-3 w-3 ${saved.isDefault ? "fill-current text-amber-500" : ""}`} />
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`Delete ${saved.name}`}
-                    title="Delete"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setConfirmDeleteSearch(saved);
-                    }}
-                    className="rounded p-1 hover:bg-muted-foreground/20"
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </button>
-                </span>
-              </DropdownMenuItem>
+                  <span className="truncate">Apply "{saved.name}"</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setSearchDefault(saved)} className="gap-1.5 pl-6">
+                  <Star className={`h-3 w-3 shrink-0 ${saved.isDefault ? "fill-current text-amber-500" : ""}`} />
+                  <span className="truncate">
+                    {saved.isDefault ? `Unset "${saved.name}" as default` : `Set "${saved.name}" as default`}
+                  </span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  variant="destructive"
+                  onClick={() => setConfirmDeleteSearch(saved)}
+                  className="gap-1.5 pl-6"
+                >
+                  <Trash2 className="h-3 w-3 shrink-0" />
+                  <span className="truncate">Delete "{saved.name}"</span>
+                </DropdownMenuItem>
+              </div>
             ))}
           </DropdownMenuContent>
         </DropdownMenu>

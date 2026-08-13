@@ -48,6 +48,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog,
@@ -257,7 +258,12 @@ function CardBody({
             <Tooltip>
               <TooltipTrigger
                 render={
-                  <span className={`flex items-center gap-1 text-xs ${status.className}`} />
+                  <button
+                    type="button"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    className={`flex items-center gap-1 text-xs ${status.className}`}
+                    aria-label={status.label}
+                  />
                 }
               >
                 <span aria-hidden="true">•</span>
@@ -267,19 +273,23 @@ function CardBody({
           </div>
         </div>
         {application.posting?.closedAt && (
-          <Tooltip>
-            <TooltipTrigger
+          <Popover>
+            <PopoverTrigger
               render={
-                <div className="mt-1.5 flex w-fit items-center gap-1 text-xs text-amber-600 dark:text-amber-400" />
+                <button
+                  type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  className="mt-1.5 flex w-fit items-center gap-1 text-xs text-amber-600 hover:underline dark:text-amber-400"
+                />
               }
             >
               <AlertTriangle className="size-3" />
               Posting closed
-            </TooltipTrigger>
-            <TooltipContent>
+            </PopoverTrigger>
+            <PopoverContent className="w-72 text-sm">
               You're still working an application for a posting that's no longer live.
-            </TooltipContent>
-          </Tooltip>
+            </PopoverContent>
+          </Popover>
         )}
         {application.posting?.location && (
           <div className="mt-1.5 flex items-center gap-1 text-xs text-muted-foreground">

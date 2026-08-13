@@ -1,10 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { Discovery } from "../src/pages/Discovery";
 
 const listMock = vi.fn().mockResolvedValue({ postings: [], total: 0 });
 const updateMock = vi.fn().mockResolvedValue({});
+const savedSearchesListMock = vi.fn().mockResolvedValue([]);
+const savedSearchesUpdateMock = vi.fn().mockResolvedValue({});
+const savedSearchesRemoveMock = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("../src/api/client", () => ({
   api: {
@@ -32,10 +36,10 @@ vi.mock("../src/api/client", () => ({
     notifications: { list: vi.fn().mockResolvedValue([]) },
     profile: { get: vi.fn().mockResolvedValue(null) },
     savedSearches: {
-      list: vi.fn().mockResolvedValue([]),
+      list: (...args: unknown[]) => savedSearchesListMock(...args),
       create: vi.fn(),
-      update: vi.fn(),
-      remove: vi.fn(),
+      update: (...args: unknown[]) => savedSearchesUpdateMock(...args),
+      remove: (...args: unknown[]) => savedSearchesRemoveMock(...args),
     },
   },
 }));
@@ -217,5 +221,65 @@ describe("Discovery bulk dismiss", () => {
     await waitFor(() => expect(updateMock).toHaveBeenCalledTimes(2));
     expect(updateMock).toHaveBeenCalledWith("p1", { dismissedAt: expect.any(String) });
     expect(updateMock).toHaveBeenCalledWith("p2", { dismissedAt: expect.any(String) });
+  });
+});
+
+// v10 accessibility pass: the star/delete actions used to be <button>s nested inside a single
+// DropdownMenuItem — invalid HTML, and unreachable by the menu's own arrow-key navigation. Each
+// saved search is now three separate, individually keyboard-navigable DropdownMenuItems
+// ("Apply …" / "Set … as default" / "Delete …"), with no interactive element nested inside another.
+describe("Discovery saved-search menu", () => {
+  const savedSearch = { id: "s1", name: "Strong fits", query: "minFit=70", isDefault: false, createdAt: "2026-01-01T00:00:00Z" };
+
+  it("exposes apply/default/delete as separate, non-nested menu items", async () => {
+    listMock.mockClear();
+    savedSearchesListMock.mockResolvedValue([savedSearch]);
+    const user = userEvent.setup();
+    renderDiscovery(["/discovery"]);
+    await waitFor(() => expect(listMock).toHaveBeenCalledTimes(1));
+
+    await user.click(screen.getByRole("button", { name: /Saved searches/i }));
+
+    const applyItem = await screen.findByRole("menuitem", { name: /Apply "Strong fits"/i });
+    const defaultItem = screen.getByRole("menuitem", { name: /Set "Strong fits" as default/i });
+    const deleteItem = screen.getByRole("menuitem", { name: /Delete "Strong fits"/i });
+
+    // Each is its own top-level menuitem (not a <button> nested inside another menuitem) — no
+    // element here should contain another interactive descendant.
+    expect(applyItem.querySelector("button, [role='menuitem']")).toBeNull();
+    expect(defaultItem.querySelector("button, [role='menuitem']")).toBeNull();
+    expect(deleteItem.querySelector("button, [role='menuitem']")).toBeNull();
+  });
+
+  it("still gates delete behind the ConfirmDialog and calls remove only on confirm", async () => {
+    listMock.mockClear();
+    savedSearchesListMock.mockResolvedValue([savedSearch]);
+    savedSearchesRemoveMock.mockClear();
+    const user = userEvent.setup();
+    renderDiscovery(["/discovery"]);
+    await waitFor(() => expect(listMock).toHaveBeenCalledTimes(1));
+
+    await user.click(screen.getByRole("button", { name: /Saved searches/i }));
+    await user.click(await screen.findByRole("menuitem", { name: /Delete "Strong fits"/i }));
+
+    expect(await screen.findByText("Delete saved view?")).toBeInTheDocument();
+    expect(savedSearchesRemoveMock).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(savedSearchesRemoveMock).toHaveBeenCalledWith("s1"));
+  });
+
+  it("sets a saved search as default via its own menu item", async () => {
+    listMock.mockClear();
+    savedSearchesListMock.mockResolvedValue([savedSearch]);
+    savedSearchesUpdateMock.mockClear();
+    const user = userEvent.setup();
+    renderDiscovery(["/discovery"]);
+    await waitFor(() => expect(listMock).toHaveBeenCalledTimes(1));
+
+    await user.click(screen.getByRole("button", { name: /Saved searches/i }));
+    await user.click(await screen.findByRole("menuitem", { name: /Set "Strong fits" as default/i }));
+
+    await waitFor(() => expect(savedSearchesUpdateMock).toHaveBeenCalledWith("s1", { isDefault: true }));
   });
 });

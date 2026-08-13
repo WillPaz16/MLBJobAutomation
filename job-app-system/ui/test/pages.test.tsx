@@ -291,4 +291,63 @@ describe("page smoke tests", () => {
     // visible under the filter — the new card must land at order 2, not 1.
     expect(moved?.order).toBe(2);
   });
+
+  // v10 accessibility pass: these four pieces of information used to live behind a Tooltip/Popover
+  // whose only trigger was a non-focusable <span>/<div>/<Badge>. Asserting the trigger is reachable
+  // via getByRole("button", ...) (rather than simulating a hover) is the regression guard that a
+  // future refactor can't silently swap the real <button> back out for a bare span.
+  it("Pipeline's document-status indicator is a focusable button naming its own status", async () => {
+    const { api } = await import("../src/api/client");
+    (api.applications.list as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+      pipelineApp({ id: "app-nodoc", posting: { ...pipelineApp({}).posting, title: "No Docs Role" } }),
+    ]);
+    renderWithRouter(<Pipeline />);
+    await waitFor(() => expect(screen.getByText("No Docs Role")).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "No documents assigned yet" })).toBeInTheDocument();
+  });
+
+  it("Pipeline's 'posting closed' explanation is reachable as a focusable button", async () => {
+    const { api } = await import("../src/api/client");
+    (api.applications.list as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+      pipelineApp({
+        id: "app-closed",
+        posting: { ...pipelineApp({}).posting, title: "Closed Posting Role", closedAt: "2026-01-02T00:00:00Z" },
+      }),
+    ]);
+    renderWithRouter(<Pipeline />);
+    await waitFor(() => expect(screen.getByText("Closed Posting Role")).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /Posting closed/i })).toBeInTheDocument();
+  });
+
+  it("Documents' missing-file badge is a focusable button, not a bare Badge span", async () => {
+    const { api } = await import("../src/api/client");
+    (api.documents.list as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: "doc-missing", kind: "resume", label: "Ghost Resume", filePath: "/tmp/gone.pdf", isBaseTemplate: false, createdAt: "", exists: false },
+    ]);
+    renderWithRouter(<Documents />);
+    await waitFor(() => expect(screen.getByText("Ghost Resume")).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /file missing/i })).toBeInTheDocument();
+  });
+
+  it("Documents' used-by-N badge is a focusable button exposing which applications use it", async () => {
+    const { api } = await import("../src/api/client");
+    (api.documents.list as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: "doc-used", kind: "resume", label: "Popular Resume", filePath: "/tmp/popular.pdf", isBaseTemplate: false, createdAt: "" },
+    ]);
+    (api.documents.get as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "doc-used",
+      kind: "resume",
+      label: "Popular Resume",
+      filePath: "/tmp/popular.pdf",
+      isBaseTemplate: false,
+      createdAt: "",
+      usedBy: [{ postingTitle: "Analyst", organization: "Cubs" }],
+    });
+    const user = userEvent.setup();
+    renderWithRouter(<Documents />);
+    await waitFor(() => expect(screen.getByText("Popular Resume")).toBeInTheDocument());
+    const usedByButton = await screen.findByRole("button", { name: /Used by 1/i });
+    await user.click(usedByButton);
+    expect(await screen.findByText(/Analyst — Cubs/)).toBeInTheDocument();
+  });
 });

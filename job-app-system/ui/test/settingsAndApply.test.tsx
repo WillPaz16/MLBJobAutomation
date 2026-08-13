@@ -132,7 +132,9 @@ describe("Settings page", () => {
     await waitFor(() => expect(screen.getByText("State U")).toBeInTheDocument());
 
     // Clicking the delete icon opens a confirmation dialog rather than deleting immediately.
-    await user.click(screen.getByRole("button", { name: "Delete" }));
+    // The accessible name must identify the specific row, not just say "Delete" (v10 a11y fix).
+    const deleteButton = screen.getByRole("button", { name: "Delete education entry: State U" });
+    await user.click(deleteButton);
     expect(await screen.findByText("Delete education entry?")).toBeInTheDocument();
     expect(educationRemove).not.toHaveBeenCalled();
 
@@ -142,7 +144,7 @@ describe("Settings page", () => {
     expect(educationRemove).not.toHaveBeenCalled();
 
     // Confirming calls the API.
-    await user.click(screen.getByRole("button", { name: "Delete" }));
+    await user.click(deleteButton);
     const dialog = await screen.findByRole("dialog");
     await user.click(within(dialog).getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(educationRemove).toHaveBeenCalledWith("edu-1"));
@@ -208,6 +210,94 @@ describe("Settings - Answers tab", () => {
       )
     );
     expect(overridesCreate).not.toHaveBeenCalled();
+  });
+});
+
+describe("Settings - delete button accessible names identify the row", () => {
+  it("Education: two entries get distinct, findable delete labels", async () => {
+    identityGet.mockResolvedValueOnce(null);
+    const { api } = await import("../src/api/client");
+    (api.identity.education.list as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: "edu-1", school: "State U", degree: "BS", fieldOfStudy: "CS", startDate: "2018", endDate: "2022", gpa: "3.9", isPrimary: true },
+      { id: "edu-2", school: "Tech College", degree: "MS", fieldOfStudy: "Stats", startDate: "2022", endDate: "2024", gpa: "3.8", isPrimary: false },
+    ]);
+    const user = userEvent.setup();
+    renderWithRouter(<Settings />);
+    await waitFor(() => expect(screen.getByText("Save identity")).toBeInTheDocument());
+    await user.click(screen.getByRole("tab", { name: "Education" }));
+    await waitFor(() => expect(screen.getByText("State U")).toBeInTheDocument());
+
+    expect(screen.getByRole("button", { name: "Delete education entry: State U" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete education entry: Tech College" })).toBeInTheDocument();
+  });
+
+  it("Answer snippets: two snippets get distinct delete labels by question", async () => {
+    identityGet.mockResolvedValueOnce(null);
+    const { api } = await import("../src/api/client");
+    (api.answers.snippets.list as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: "sn-1", category: "General", question: "Why this company?", template: "...", tags: "", isActive: true },
+      { id: "sn-2", category: "General", question: "Why this role?", template: "...", tags: "", isActive: true },
+    ]);
+    const user = userEvent.setup();
+    renderWithRouter(<Settings />);
+    await waitFor(() => expect(screen.getByText("Save identity")).toBeInTheDocument());
+    await user.click(screen.getByRole("tab", { name: "Answers" }));
+
+    expect(await screen.findByRole("button", { name: "Delete snippet: Why this company?" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete snippet: Why this role?" })).toBeInTheDocument();
+  });
+
+  it("Answer overrides: two overrides for the selected application get distinct delete labels", async () => {
+    identityGet.mockResolvedValueOnce(null);
+    const { api } = await import("../src/api/client");
+    (api.answers.overrides.list as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: "ov-1", applicationId: "cm000000000000000000app1", questionKey: "why-us", answer: "A", snippetId: null },
+      { id: "ov-2", applicationId: "cm000000000000000000app1", questionKey: "why-you", answer: "B", snippetId: null },
+    ]);
+    const user = userEvent.setup();
+    renderWithRouter(<Settings />);
+    await waitFor(() => expect(screen.getByText("Save identity")).toBeInTheDocument());
+    await user.click(screen.getByRole("tab", { name: "Answers" }));
+
+    const label = await screen.findByText("Application");
+    const trigger = within(label.closest("div")!).getByRole("combobox");
+    await user.click(trigger);
+    await user.click(await screen.findByRole("option", { name: "Quant Analyst — Royals" }));
+
+    expect(await screen.findByRole("button", { name: "Delete override: why-us" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete override: why-you" })).toBeInTheDocument();
+  });
+
+  it("Tone presets: two presets get distinct delete labels by name", async () => {
+    identityGet.mockResolvedValueOnce(null);
+    const { api } = await import("../src/api/client");
+    (api.tonePresets.list as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: "tone-1", name: "Formal", guidance: "...", isDefault: true },
+      { id: "tone-2", name: "Casual", guidance: "...", isDefault: false },
+    ]);
+    const user = userEvent.setup();
+    renderWithRouter(<Settings />);
+    await waitFor(() => expect(screen.getByText("Save identity")).toBeInTheDocument());
+    await user.click(screen.getByRole("tab", { name: "Tone & Orgs" }));
+
+    expect(await screen.findByRole("button", { name: "Delete tone preset: Formal" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete tone preset: Casual" })).toBeInTheDocument();
+  });
+
+  it("Org profiles: two profiles get distinct delete labels by organization name", async () => {
+    identityGet.mockResolvedValueOnce(null);
+    const { api } = await import("../src/api/client");
+    (api.orgProfiles.list as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: "org-1", organizationName: "Royals", notes: "", preferredToneId: null },
+      { id: "org-2", organizationName: "Diamondbacks", notes: "", preferredToneId: null },
+    ]);
+    const user = userEvent.setup();
+    renderWithRouter(<Settings />);
+    await waitFor(() => expect(screen.getByText("Save identity")).toBeInTheDocument());
+    await user.click(screen.getByRole("tab", { name: "Tone & Orgs" }));
+
+    expect(await screen.findByRole("button", { name: "Delete org profile: Royals" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete org profile: Diamondbacks" })).toBeInTheDocument();
   });
 });
 

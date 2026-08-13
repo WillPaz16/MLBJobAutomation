@@ -1,8 +1,15 @@
 import { Checkbox as CheckboxPrimitive } from "@base-ui/react/checkbox"
 
 import { cn } from "@/lib/utils"
-import { CheckIcon } from "lucide-react"
+import { CheckIcon, MinusIcon } from "lucide-react"
 
+// Base UI's CheckboxRoot tracks `indeterminate` as its own boolean state (separate from
+// `checked` — see CheckboxRoot.d.ts's `indeterminate: boolean` on CheckboxRootState, and
+// CheckboxRootDataAttributes' `data-indeterminate`), and CheckboxIndicator renders whenever
+// EITHER `checked` or `indeterminate` is true. So the indicator's children must branch on
+// `props.indeterminate` themselves — the primitive gives no built-in "indeterminate icon" swap,
+// unlike some other checkbox libraries. Without this, "some selected" and "all selected" render
+// the exact same checkmark (the v10 accessibility-pass bug this fixes).
 function Checkbox({ className, ...props }: CheckboxPrimitive.Root.Props) {
   return (
     <CheckboxPrimitive.Root
@@ -17,8 +24,11 @@ function Checkbox({ className, ...props }: CheckboxPrimitive.Root.Props) {
         data-slot="checkbox-indicator"
         className="grid place-content-center text-current transition-none [&>svg]:size-3.5"
       >
-        <CheckIcon
-        />
+        {props.indeterminate ? (
+          <MinusIcon data-slot="checkbox-indeterminate-icon" />
+        ) : (
+          <CheckIcon data-slot="checkbox-check-icon" />
+        )}
       </CheckboxPrimitive.Indicator>
     </CheckboxPrimitive.Root>
   )

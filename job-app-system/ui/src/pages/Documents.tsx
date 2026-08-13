@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog,
@@ -302,25 +303,30 @@ function DocumentList({
                     {d.isBaseTemplate && <Badge variant="secondary">base</Badge>}
                     {!exists && (
                       <Tooltip>
-                        <TooltipTrigger
-                          render={<Badge variant="destructive" className="gap-1" />}
-                        >
-                          <AlertTriangle className="size-3" /> file missing
+                        <TooltipTrigger render={<button type="button" className="inline-flex" />}>
+                          <Badge variant="destructive" className="gap-1">
+                            <AlertTriangle className="size-3" /> file missing
+                          </Badge>
                         </TooltipTrigger>
                         <TooltipContent>File no longer exists on disk.</TooltipContent>
                       </Tooltip>
                     )}
                     {usage && usage.usedBy.length > 0 && (
-                      <Tooltip>
-                        <TooltipTrigger render={<Badge variant="outline" />}>
-                          Used by {usage.usedBy.length}
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          {usage.usedBy
-                            .map((u) => `${u.postingTitle} — ${u.organization}`)
-                            .join(", ")}
-                        </TooltipContent>
-                      </Tooltip>
+                      <Popover>
+                        <PopoverTrigger render={<button type="button" className="inline-flex" />}>
+                          <Badge variant="outline">Used by {usage.usedBy.length}</Badge>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-80 text-sm">
+                          <p className="mb-1 font-medium text-foreground">Used by</p>
+                          <ul className="list-disc space-y-0.5 pl-4 text-muted-foreground">
+                            {usage.usedBy.map((u, i) => (
+                              <li key={i}>
+                                {u.postingTitle} — {u.organization}
+                              </li>
+                            ))}
+                          </ul>
+                        </PopoverContent>
+                      </Popover>
                     )}
                   </div>
                   <div

@@ -416,7 +416,12 @@ function EducationTab() {
               <Button size="sm" variant="outline" onClick={() => startEdit(entry)}>
                 Edit
               </Button>
-              <Button size="icon-xs" variant="ghost" onClick={() => setConfirmDeleteId(entry.id)} aria-label="Delete">
+              <Button
+                size="icon-xs"
+                variant="ghost"
+                onClick={() => setConfirmDeleteId(entry.id)}
+                aria-label={`Delete education entry: ${entry.school || entry.degree || "untitled"}`}
+              >
                 <Trash2 className="size-4" />
               </Button>
             </div>
@@ -650,7 +655,12 @@ function AnswersTab() {
                     <Button size="sm" variant="outline" onClick={() => startEdit(s)}>
                       Edit
                     </Button>
-                    <Button size="icon-xs" variant="ghost" onClick={() => setConfirmDeleteSnippetId(s.id)} aria-label="Delete">
+                    <Button
+                      size="icon-xs"
+                      variant="ghost"
+                      onClick={() => setConfirmDeleteSnippetId(s.id)}
+                      aria-label={`Delete snippet: ${s.question}`}
+                    >
                       <Trash2 className="size-4" />
                     </Button>
                   </div>
@@ -734,7 +744,12 @@ function AnswersTab() {
                       <Button size="sm" variant="outline" onClick={() => startEditOverride(o)}>
                         Edit
                       </Button>
-                      <Button size="icon-xs" variant="ghost" onClick={() => setConfirmDeleteOverrideId(o.id)} aria-label="Delete">
+                      <Button
+                        size="icon-xs"
+                        variant="ghost"
+                        onClick={() => setConfirmDeleteOverrideId(o.id)}
+                        aria-label={`Delete override: ${o.questionKey}`}
+                      >
                         <Trash2 className="size-4" />
                       </Button>
                     </div>
@@ -913,7 +928,12 @@ function ToneOrgsTab() {
                   >
                     Edit
                   </Button>
-                  <Button size="icon-xs" variant="ghost" onClick={() => setConfirmDeleteToneId(t.id)} aria-label="Delete">
+                  <Button
+                    size="icon-xs"
+                    variant="ghost"
+                    onClick={() => setConfirmDeleteToneId(t.id)}
+                    aria-label={`Delete tone preset: ${t.name}`}
+                  >
                     <Trash2 className="size-4" />
                   </Button>
                 </div>
@@ -988,7 +1008,12 @@ function ToneOrgsTab() {
                   >
                     Edit
                   </Button>
-                  <Button size="icon-xs" variant="ghost" onClick={() => setConfirmDeleteOrgId(o.id)} aria-label="Delete">
+                  <Button
+                    size="icon-xs"
+                    variant="ghost"
+                    onClick={() => setConfirmDeleteOrgId(o.id)}
+                    aria-label={`Delete org profile: ${o.organizationName}`}
+                  >
                     <Trash2 className="size-4" />
                   </Button>
                 </div>
