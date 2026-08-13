@@ -71,7 +71,16 @@ export function categorize(
     return "OTHER";
   }
 
-  if (/(data scien|data analy|machine learning|ml engineer|analytics)/.test(haystack)) {
+  // Title-only, deliberately — not the full haystack. Many data-heavy-industry employers
+  // (health-data, fintech, analytics-as-a-service) write "data"/"analytics" into their company
+  // boilerplate on EVERY posting's description regardless of the actual role, e.g. Clover
+  // Health/Flatiron Health tagged "Medical Assistant" and "Buyer" as DATA_SCIENCE before this fix
+  // purely from generic company-description text. Same reasoning fitScore.ts's roleSignal
+  // already documents for scoping to title: org/description text pollutes a role judgment.
+  // Spot-checked against real data before narrowing this: Airbnb/Tesla/Campbell Soup's correctly-
+  // tagged DATA_SCIENCE postings all carry the signal in the title itself, so this doesn't lose
+  // real matches — it only drops the false positives that had none.
+  if (/(data scien|data analy|machine learning|ml engineer|analytics)/.test(title.toLowerCase())) {
     return "DATA_SCIENCE";
   }
 

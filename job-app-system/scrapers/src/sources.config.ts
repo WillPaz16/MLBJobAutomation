@@ -52,6 +52,18 @@ export const greenhouseSources: { boardToken?: string; boardTokens?: string[]; o
   { boardToken: "imc", organizationName: "IMC Trading" },
   // boards-api.greenhouse.io/v1/boards/transmarketgroup/jobs — 17 live jobs.
   { boardToken: "transmarketgroup", organizationName: "TransMarket Group" },
+  // Non-quant, non-MLB data-science coverage-gap follow-up (2026-08-13): health-data/biotech and
+  // health-insurance analytics employers with real entry-level-worded DS/analyst roles, found via
+  // curl with a real browser User-Agent, NOT already covered by any jobListRepo aggregator.
+  // boards-api.greenhouse.io/v1/boards/flatironhealth/jobs — 34 live jobs, curl-verified
+  // 2026-08-13, incl. genuine entry/analyst-level DS titles: "Data Analyst - Evidence Solutions",
+  // "Data Analyst - Product Data Science" (alongside senior roles, but real analyst-level signal
+  // present, unlike the big-tech boards removed for simplify-new-grad).
+  { boardToken: "flatironhealth", organizationName: "Flatiron Health" },
+  // boards-api.greenhouse.io/v1/boards/cloverhealth/jobs — 67 live jobs, curl-verified 2026-08-13,
+  // incl. "Data Analyst, Clinical Data Effectiveness", "Data Analyst, Value-Based Care Analytics",
+  // "Actuarial Analyst" — real entry-level analyst/actuarial titles, health-insurance analytics.
+  { boardToken: "cloverhealth", organizationName: "Clover Health" },
 ];
 
 // Lever: find an org's site slug from their careers page URL: jobs.lever.co/<site>.

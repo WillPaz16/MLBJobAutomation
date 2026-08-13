@@ -55,6 +55,37 @@ describe("categorize", () => {
     expect(categorize("DATA SCIENTIST", "SOME COMPANY")).toBe("DATA_SCIENCE");
   });
 
+  it("does not misclassify a role as DATA_SCIENCE just because the company's boilerplate description mentions data/analytics", () => {
+    // Real case: Clover Health/Flatiron Health (health-data companies) mention "data" and
+    // "analytics" in their company-description boilerplate on every posting, which previously
+    // tagged "Medical Assistant" and "Buyer" as DATA_SCIENCE. The DATA_SCIENCE check is title-only
+    // for exactly this reason — description text is company marketing, not a role signal.
+    expect(
+      categorize(
+        "Medical Assistant",
+        "Clover Health",
+        "Clover Health is a data-driven healthcare company using analytics to transform patient care."
+      )
+    ).toBe("OTHER");
+    expect(
+      categorize(
+        "Buyer",
+        "Flatiron Health",
+        "Flatiron Health leverages real-world data and analytics to accelerate cancer research."
+      )
+    ).toBe("OTHER");
+  });
+
+  it("still classifies a real data-science role by title even with the same kind of company boilerplate", () => {
+    expect(
+      categorize(
+        "Data Analyst, Clinical Data Effectiveness",
+        "Clover Health",
+        "Clover Health is a data-driven healthcare company."
+      )
+    ).toBe("DATA_SCIENCE");
+  });
+
   it("uses the description to classify a title that gives no signal on its own", () => {
     // Real case: a UKG posting titled "Junior Product Designer" whose description says it's
     // on the Dodgers' Baseball Research and Development team — title alone gives BASEBALL_OPS.
