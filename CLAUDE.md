@@ -35,7 +35,31 @@ React UI, all running on this machine — nothing is deployed anywhere.
   over scraping rendered HTML; only fall back to the generic Playwright team-page adapter when no
   such API exists, and only against sites that don't require solving a challenge to load.
 - **No autonomous submission.** The system surfaces postings and drafts; a human always approves
-  before anything is applied to. Don't add code paths that submit applications automatically.
+  before anything is applied to. This still holds with the apply-assist helper (v8 Phase 6,
+  `api/src/applyAssist/`, `ui/src/components/ApplyPanel.tsx`) sitting alongside it, so the line
+  needs to be precise about both sides rather than just repeated.
+  **Never build**: anything that calls `.click()`/`.submit()`/`.requestSubmit()` on a form or its
+  controls, drives a live ATS via Playwright or any headless browser (Playwright stays sanctioned
+  for *reading* career pages only — see the scraping rule above), runs without a fresh human
+  `isTrusted` gesture, or submits anything the user hasn't visually reviewed first.
+  **Explicitly allowed**: a user-triggered helper, on a page the user opened themselves, that types
+  the user's own saved data into fields, visibly outlines everything it touched (with a distinct
+  outline for EEO fields, flagged for review rather than silently filled), leaves low-confidence and
+  unmatched fields alone, and stops — ending in an on-page summary that says nothing was submitted.
+  That's what a password manager does; it is not autonomous submission. `api/src/applyAssist/
+  generateScript.ts`'s no-click/no-submit guard is asserted by a literal string-match test
+  (`api/test/applyAssist.test.ts`) specifically so a future refactor of the fill logic can't
+  reintroduce a submit call without a test failing.
+  PII lives only in `ApplicantIdentity` and the `GET /api/applications/:id/apply-pack` /
+  `apply-assist-script` endpoints it feeds — never in `prep-context`, which feeds
+  `tailor-application` skill prompts and has no business seeing a DOB or address.
+  `CandidateProfile` stays a scoring object, not an identity one — its schema is shared with
+  `POST /api/profile/coverage/preview`, so adding PII fields to it would post them to a scoring
+  endpoint on every keystroke of Compatibility's live preview.
+  CORS (`api/src/index.ts`) is origin-allowlisted (`localhost:5173`/`127.0.0.1:5173`, plus
+  no-`Origin` requests like curl/the scheduler/the skill) specifically so `ApplicantIdentity` PII
+  can't be read cross-origin by an arbitrary open tab — this must not be loosened back to a bare
+  `cors()` wildcard.
 - **API validation lives in `api/src/validation.ts`** (zod schemas for `Posting.category` /
   `Application.stage` / document creation / pagination) — import from there rather than
   redefining the valid-value lists inline. Routes are wrapped in `asyncHandler` (`api/src/
