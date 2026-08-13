@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
+    "postbuild": "mkdir -p dist/applyAssist && cp src/applyAssist/fieldMatcherCore.js dist/applyAssist/fieldMatcherCore.js",
     "start": "node dist/index.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",

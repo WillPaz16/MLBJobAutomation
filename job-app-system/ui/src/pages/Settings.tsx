@@ -136,8 +136,12 @@ function EeoField({
     <div className="space-y-1">
       <Label>{label}</Label>
       <Select
-        value={code ?? ""}
+        value={code ?? "__none__"}
         onValueChange={(v) => {
+          if (v === "__none__") {
+            onChange(null, null);
+            return;
+          }
           const opt = options.find((o) => o.code === v);
           onChange(opt?.code ?? null, opt?.label ?? null);
         }}
@@ -145,10 +149,18 @@ function EeoField({
         <SelectTrigger className="w-full">
           <SelectValue
             placeholder="Not answered"
-            labels={Object.fromEntries(options.map((o) => [o.code, o.label]))}
+            labels={{
+              __none__: "Not answered",
+              ...Object.fromEntries(options.map((o) => [o.code, o.label])),
+            }}
           />
         </SelectTrigger>
         <SelectContent>
+          {/* Explicit sentinel so a previously-answered EEO field can be cleared back to "Not
+              answered" — Base UI's Select otherwise has no item representing that state, and
+              once a real code is chosen there's no way back short of a DB edit. Same "__none__"
+              convention as Pipeline.tsx's DocPicker. */}
+          <SelectItem value="__none__">Not answered</SelectItem>
           {options.map((o) => (
             <SelectItem key={o.code} value={o.code}>
               {o.label}
@@ -327,8 +339,9 @@ function emptyEducationDraft(): Partial<EducationEntry> {
 }
 
 // Education tab — list of EducationEntry rows with add/edit/delete. isPrimary is presented as a
-// radio-style single-select among siblings, reflecting (not re-implementing) the server's
-// transactional exclusivity enforcement in api/src/routes/identity.ts.
+// per-entry checkbox (each entry is edited individually, not as a radio group, so it must be
+// possible to un-set it directly) — the server enforces cross-entry exclusivity transactionally
+// in api/src/routes/identity.ts, this UI just reflects that, not re-implements it.
 function EducationTab() {
   const [entries, setEntries] = useState<EducationEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -436,12 +449,12 @@ function EducationTab() {
             />
             <label className="flex items-center gap-2 text-sm">
               <input
-                type="radio"
-                name="isPrimary"
+                type="checkbox"
                 checked={!!draft.isPrimary}
                 onChange={(e) => setDraft((d) => ({ ...d, isPrimary: e.target.checked }))}
               />
-              Primary degree (only one entry can be primary)
+              Primary degree (only one entry can be primary — the server unsets any other
+              entry's primary flag when this one is saved as primary)
             </label>
             <div className="flex gap-2 sm:col-span-2">
               <Button onClick={save} disabled={saving}>
@@ -492,6 +505,7 @@ function AnswersTab() {
   const [overrideDraft, setOverrideDraft] = useState<{ questionKey: string; answer: string; snippetId: string | null }>(
     { questionKey: "", answer: "", snippetId: null }
   );
+  const [editingOverrideId, setEditingOverrideId] = useState<string | null>(null);
   const [savingOverride, setSavingOverride] = useState(false);
   const [confirmDeleteSnippetId, setConfirmDeleteSnippetId] = useState<string | null>(null);
   const [confirmDeleteOverrideId, setConfirmDeleteOverrideId] = useState<string | null>(null);
@@ -510,11 +524,13 @@ function AnswersTab() {
   }, []);
 
   useEffect(() => {
+    cancelEditOverride();
     if (!selectedAppId) {
       setOverrides([]);
       return;
     }
     api.answers.overrides.list({ applicationId: selectedAppId }).then(setOverrides);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedAppId]);
 
   function startEdit(snippet?: AnswerSnippet) {
@@ -550,16 +566,39 @@ function AnswersTab() {
     }
   }
 
+  function startEditOverride(override: AnswerOverride) {
+    setEditingOverrideId(override.id);
+    setOverrideDraft({
+      questionKey: override.questionKey,
+      answer: override.answer,
+      snippetId: override.snippetId ?? null,
+    });
+  }
+
+  function cancelEditOverride() {
+    setEditingOverrideId(null);
+    setOverrideDraft({ questionKey: "", answer: "", snippetId: null });
+  }
+
   async function saveOverride() {
     if (!selectedAppId || !overrideDraft.questionKey || !overrideDraft.answer) return;
     setSavingOverride(true);
     try {
-      await api.answers.overrides.create({
-        applicationId: selectedAppId,
-        questionKey: overrideDraft.questionKey,
-        answer: overrideDraft.answer,
-        snippetId: overrideDraft.snippetId,
-      });
+      if (editingOverrideId) {
+        await api.answers.overrides.update(editingOverrideId, {
+          questionKey: overrideDraft.questionKey,
+          answer: overrideDraft.answer,
+          snippetId: overrideDraft.snippetId,
+        });
+      } else {
+        await api.answers.overrides.create({
+          applicationId: selectedAppId,
+          questionKey: overrideDraft.questionKey,
+          answer: overrideDraft.answer,
+          snippetId: overrideDraft.snippetId,
+        });
+      }
+      setEditingOverrideId(null);
       setOverrideDraft({ questionKey: "", answer: "", snippetId: null });
       const refreshed = await api.answers.overrides.list({ applicationId: selectedAppId });
       setOverrides(refreshed);
@@ -576,6 +615,7 @@ function AnswersTab() {
       await api.answers.overrides.remove(id);
       toast.success("Override deleted");
       setOverrides((prev) => prev.filter((o) => o.id !== id));
+      if (editingOverrideId === id) cancelEditOverride();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Failed to delete override");
     }
@@ -660,7 +700,16 @@ function AnswersTab() {
             <Label>Application</Label>
             <Select value={selectedAppId} onValueChange={(v) => setSelectedAppId(v ?? "")}>
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select an application" />
+                {/* Explicit function-children, not `labels`: values here are Application ids
+                    (cuids), not a fixed enum, so the trigger must look up the real application's
+                    posting title/org rather than fall back to prettifyLabel(id), which would
+                    render a garbled cuid string. Same pattern as Pipeline.tsx's DocPicker. */}
+                <SelectValue placeholder="Select an application">
+                  {(v: string) => {
+                    const a = applications.find((app) => app.id === v);
+                    return a ? `${a.posting?.title} — ${a.posting?.organization}` : v;
+                  }}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {applications.map((a) => (
@@ -681,9 +730,14 @@ function AnswersTab() {
                       <div className="font-medium text-foreground">{o.questionKey}</div>
                       <p className="text-sm text-muted-foreground">{o.answer}</p>
                     </div>
-                    <Button size="icon-xs" variant="ghost" onClick={() => setConfirmDeleteOverrideId(o.id)} aria-label="Delete">
-                      <Trash2 className="size-4" />
-                    </Button>
+                    <div className="flex gap-1">
+                      <Button size="sm" variant="outline" onClick={() => startEditOverride(o)}>
+                        Edit
+                      </Button>
+                      <Button size="icon-xs" variant="ghost" onClick={() => setConfirmDeleteOverrideId(o.id)} aria-label="Delete">
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               ))}
@@ -702,9 +756,16 @@ function AnswersTab() {
                       rows={3}
                     />
                   </div>
-                  <Button onClick={saveOverride} disabled={savingOverride}>
-                    {savingOverride ? "Saving…" : "Save override"}
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button onClick={saveOverride} disabled={savingOverride}>
+                      {savingOverride ? "Saving…" : editingOverrideId ? "Save changes" : "Save override"}
+                    </Button>
+                    {editingOverrideId && (
+                      <Button variant="outline" onClick={cancelEditOverride}>
+                        Cancel
+                      </Button>
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             </>
@@ -953,16 +1014,25 @@ function ToneOrgsTab() {
                 <div className="space-y-1">
                   <Label>Preferred tone</Label>
                   <Select
-                    value={orgDraft.preferredToneId ?? ""}
-                    onValueChange={(v) => setOrgDraft((d) => ({ ...d, preferredToneId: v || null }))}
+                    value={orgDraft.preferredToneId ?? "__none__"}
+                    onValueChange={(v) =>
+                      setOrgDraft((d) => ({ ...d, preferredToneId: v === "__none__" ? null : v }))
+                    }
                   >
                     <SelectTrigger className="w-full">
                       <SelectValue
                         placeholder="Use default"
-                        labels={Object.fromEntries(tones.map((t) => [t.id, t.name]))}
+                        labels={{
+                          __none__: "Use default",
+                          ...Object.fromEntries(tones.map((t) => [t.id, t.name])),
+                        }}
                       />
                     </SelectTrigger>
                     <SelectContent>
+                      {/* Explicit sentinel so a previously-set preferred tone can be cleared back
+                          to "Use default" — same "__none__" convention as Pipeline.tsx's
+                          DocPicker and the EEO fields above. */}
+                      <SelectItem value="__none__">Use default</SelectItem>
                       {tones.map((t) => (
                         <SelectItem key={t.id} value={t.id}>
                           {t.name}

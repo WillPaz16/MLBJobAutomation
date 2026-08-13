@@ -283,6 +283,18 @@ export function Compatibility() {
           }
           setCoreSkills(DEFAULT_CORE_SKILLS.join(", "));
           setSkills(Array.from(tags).join(", "));
+          // No profile exists yet, so there's nothing "saved" to diff against — but isDirty
+          // requires savedDraft !== null (see below), so without setting a baseline here the
+          // live preview could never fire for a brand-new user. Baseline against the empty
+          // shape (not the seeded defaults) so editing away from the seeded skills/coreSkills
+          // correctly counts as a dirty edit.
+          setSavedDraft({
+            skills: "",
+            coreSkills: "",
+            preferredCategories: "",
+            locationKeywords: "",
+            excludeKeywords: "",
+          });
         }
       } catch {
         // leave the form blank/editable if resume bullets or the profile fail to load

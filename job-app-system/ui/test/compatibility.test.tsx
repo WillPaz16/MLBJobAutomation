@@ -1,8 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { Compatibility } from "../src/pages/Compatibility";
 
-const { profileCoverage } = vi.hoisted(() => ({ profileCoverage: vi.fn() }));
+const { profileCoverage, profileGet, previewCoverage } = vi.hoisted(() => ({
+  profileCoverage: vi.fn(),
+  profileGet: vi.fn(),
+  previewCoverage: vi.fn(),
+}));
 
 vi.mock("sonner", () => ({
   toast: { error: vi.fn(), success: vi.fn() },
@@ -11,18 +16,10 @@ vi.mock("sonner", () => ({
 vi.mock("../src/api/client", () => ({
   api: {
     profile: {
-      get: vi.fn().mockResolvedValue({
-        id: "profile",
-        skills: "sql, plotly",
-        coreSkills: "python",
-        preferredCategories: null,
-        locationKeywords: null,
-        excludeKeywords: null,
-        updatedAt: new Date().toISOString(),
-      }),
+      get: profileGet,
       update: vi.fn(),
       coverage: profileCoverage,
-      previewCoverage: vi.fn(),
+      previewCoverage,
     },
     resumeBullets: { list: vi.fn().mockResolvedValue([]) },
   },
@@ -30,6 +27,15 @@ vi.mock("../src/api/client", () => ({
 
 describe("Compatibility coverage surfacing", () => {
   it("shows the matched-skill summary line and flags zero-match skills", async () => {
+    profileGet.mockResolvedValueOnce({
+      id: "profile",
+      skills: "sql, plotly",
+      coreSkills: "python",
+      preferredCategories: null,
+      locationKeywords: null,
+      excludeKeywords: null,
+      updatedAt: new Date().toISOString(),
+    });
     profileCoverage.mockResolvedValue({
       totalPostings: 10,
       skills: [
@@ -49,5 +55,38 @@ describe("Compatibility coverage surfacing", () => {
     expect(screen.getByText("plotly")).toBeInTheDocument();
     expect(screen.getByText(/dismissed score 12 on average/)).toBeInTheDocument();
     expect(screen.getByText(/applied to score 55 on average/)).toBeInTheDocument();
+  });
+
+  it("fires the live preview for a brand-new user with no saved profile yet", async () => {
+    // Regression test for the "savedDraft never set on the no-profile branch" bug: isDirty was
+    // permanently false for a new user because savedDraft stayed null, so previewCoverage could
+    // never fire even after editing the seeded defaults.
+    profileGet.mockResolvedValueOnce(null);
+    profileCoverage.mockResolvedValue({
+      totalPostings: 0,
+      skills: [],
+      fitScores: [],
+      tierCounts: { Strong: 0, Good: 0, Fair: 0, Weak: 0 },
+      categoryActivity: [],
+      calibration: { dismissedAvg: null, dismissedCount: 0, appliedAvg: null, appliedCount: 0 },
+    });
+    previewCoverage.mockResolvedValue({
+      totalPostings: 0,
+      skills: [],
+      fitScores: [],
+      tierCounts: { Strong: 1, Good: 0, Fair: 0, Weak: 0 },
+      categoryActivity: [],
+      calibration: { dismissedAvg: null, dismissedCount: 0, appliedAvg: null, appliedCount: 0 },
+    });
+
+    const user = userEvent.setup();
+    render(<Compatibility />);
+
+    const skillsField = await screen.findByLabelText("Skills");
+    expect(previewCoverage).not.toHaveBeenCalled();
+
+    await user.type(skillsField, "rust");
+
+    await waitFor(() => expect(previewCoverage).toHaveBeenCalled(), { timeout: 3000 });
   });
 });
