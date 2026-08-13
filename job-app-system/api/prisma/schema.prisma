@@ -174,6 +174,20 @@ model OrgProfile {
   preferredTone    TonePreset? @relation(fields: [preferredToneId], references: [id])
 }
 
+// Saved Discovery filter views, stored in the DB (not localStorage) per the confirmed v8 decision
+// — survives browser resets and is covered by the existing nightly backup.ts, unlike
+// localStorage. `query` is the exact query string useFilterParams already round-trips through
+// the URL (everything except `page`, which a saved view shouldn't pin), so applying a saved
+// search is just re-parsing that string back into individual setFilter calls client-side — no
+// structured filter shape needs to be duplicated/kept in sync here.
+model SavedSearch {
+  id        String   @id @default(cuid())
+  name      String
+  query     String   // URLSearchParams-formatted string, e.g. "tab=baseball&minFit=40"
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
 model NotificationLog {
   id        String   @id @default(cuid())
   summary   String

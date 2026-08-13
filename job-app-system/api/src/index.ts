@@ -10,6 +10,7 @@ import { resumeBulletsRouter } from "./routes/resumeBullets.js";
 import { tonePresetsRouter } from "./routes/tonePresets.js";
 import { orgProfilesRouter } from "./routes/orgProfiles.js";
 import { profileRouter } from "./routes/profile.js";
+import { savedSearchesRouter } from "./routes/savedSearches.js";
 import { HttpError, asyncHandler } from "./asyncHandler.js";
 import { runDailyDiscovery, startScheduler } from "./scheduler.js";
 
@@ -31,7 +32,7 @@ export function createApp() {
   app.use(
     cors({
       origin: (origin, cb) => cb(null, !origin || ALLOWED_ORIGINS.has(origin)),
-      exposedHeaders: ["X-Total-Count"],
+      exposedHeaders: ["X-Total-Count", "X-Fit-Cohort-Size"],
     })
   );
   app.use(express.json());
@@ -45,6 +46,7 @@ export function createApp() {
   app.use("/api/tone-presets", tonePresetsRouter);
   app.use("/api/org-profiles", orgProfilesRouter);
   app.use("/api/profile", profileRouter);
+  app.use("/api/saved-searches", savedSearchesRouter);
 
   app.get("/api/health", (_req, res) => res.json({ ok: true }));
 

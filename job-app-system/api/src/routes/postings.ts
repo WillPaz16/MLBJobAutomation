@@ -2,7 +2,12 @@ import { Router } from "express";
 import { createHash } from "crypto";
 import { prisma } from "../db.js";
 import { asyncHandler, HttpError } from "../asyncHandler.js";
-import { createManualPostingSchema, paginationSchema, updatePostingSchema } from "../validation.js";
+import {
+  createManualPostingSchema,
+  paginationSchema,
+  postingsDiscoveredAfterSchema,
+  updatePostingSchema,
+} from "../validation.js";
 import { computeFitScore, fitTier } from "../fitScore.js";
 
 export const postingsRouter = Router();
@@ -49,6 +54,60 @@ function withNormalizedFitScore<T extends { fitScoreRaw?: number }>(
   return { ...posting, fitScore: percentile, fitTier: fitTier(percentile) };
 }
 
+// Tokenizes a free-text search query into an AND-of-ORs, one clause per term. A quoted
+// "multi word phrase" stays a single term; a leading `-` (outside quotes, or on a quoted phrase)
+// negates that term. Bounded to 8 terms so a pathological query can't build an unbounded `AND`
+// array. Deliberately NOT FTS5 (see CLAUDE.md-adjacent plan notes) — at 587 rows a LIKE scan per
+// term is dwarfed by the full-cohort fetch + computeFitScore's own regex pass that already runs
+// per request, and this keeps the query a composable typed Prisma `where` instead of a
+// `$queryRaw` id-list round-trip.
+function parseSearchTokens(q: string): { term: string; negate: boolean }[] {
+  const tokens: { term: string; negate: boolean }[] = [];
+  const re = /(-)?"([^"]+)"|(-)?(\S+)/g;
+  let match: RegExpExecArray | null;
+  while (tokens.length < 8 && (match = re.exec(q)) !== null) {
+    const negate = Boolean(match[1] ?? match[3]);
+    const term = (match[2] ?? match[4] ?? "").trim();
+    if (term) tokens.push({ term, negate });
+  }
+  return tokens;
+}
+
+// Each term matches if it appears (case-insensitive-for-ASCII, per SQLite LIKE) in title,
+// organization, OR description — this is the part that fixes both "data scientist" failing to
+// match "Scientist, Data" (tokenized instead of one whole-string `contains`) and description never
+// being searched at all (previously only title+organization were checked).
+function searchTermClause(term: string) {
+  return {
+    OR: [
+      { title: { contains: term } },
+      { organization: { contains: term } },
+      // `description` is nullable, and SQL three-valued logic means `description LIKE '%x%'` on a
+      // NULL description evaluates to NULL, not false — inside a negated (`NOT`) term that NULL
+      // poisons the whole OR to NULL (not true), silently excluding every posting with no
+      // description at all, matched or not. Explicitly gating on `not: null` first keeps this
+      // clause a real boolean for every row.
+      { AND: [{ description: { not: null } }, { description: { contains: term } }] },
+    ],
+  };
+}
+
+// Shared null-safe date-field comparator: nulls sort LAST regardless of `asc`/`desc` direction,
+// with an `id` tiebreak for stable pagination across requests. Used by both the profile-exists
+// (JS-sorted) path and the no-profile path's postedAt sorts below — `postedAt` is nullable
+// (~90% null on real data) and discoveredAt_desc/asc go through Prisma's own non-nullable
+// orderBy instead, so only the postedAt sorts need this.
+function compareNullsLast<T extends { id: string }>(a: T, b: T, field: string, direction: "asc" | "desc"): number {
+  const av = (a as any)[field];
+  const bv = (b as any)[field];
+  if (av === null && bv === null) return a.id.localeCompare(b.id);
+  if (av === null) return 1;
+  if (bv === null) return -1;
+  const cmp = +new Date(av) - +new Date(bv);
+  const directed = direction === "asc" ? cmp : -cmp;
+  return directed !== 0 ? directed : a.id.localeCompare(b.id);
+}
+
 const SORT_OPTIONS = {
   discoveredAt_desc: { discoveredAt: "desc" as const },
   discoveredAt_asc: { discoveredAt: "asc" as const },
@@ -77,8 +136,15 @@ postingsRouter.get(
       isMlbTeam,
       sourceSection,
       isInternship,
+      discoveredAfter,
+      excludeInPipeline,
+      matchedSkill,
     } = req.query;
     const { take, skip } = paginationSchema.parse(req.query);
+    // Validated separately from pagination above: this is the one param here that gets parsed
+    // into a real `Date` for a Prisma filter, so a garbage value needs to 400, not 500 (a bad
+    // `Date` silently becomes `Invalid Date`, which Prisma would otherwise pass straight through).
+    const { discoveredAfter: parsedDiscoveredAfter } = postingsDiscoveredAfterSchema.parse(req.query);
 
     const statusFilter =
       status === "closed" ? { closedAt: { not: null } } : status === "all" ? {} : { closedAt: null };
@@ -88,6 +154,7 @@ postingsRouter.get(
     // minFit while sorting by postedAt, or sort by fit_desc with no minFit floor at all.
     const parsedMinFit = typeof minFit === "string" ? Number(minFit) : undefined;
     const hasMinFit = parsedMinFit !== undefined && !Number.isNaN(parsedMinFit);
+    const matchedSkillFilter = typeof matchedSkill === "string" && matchedSkill.length > 0 ? matchedSkill.toLowerCase() : undefined;
 
     const where = {
       category: category ? (category as string) : undefined,
@@ -102,9 +169,18 @@ postingsRouter.get(
       workMode: workMode ? (workMode as string) : undefined,
       region: region ? (region as string) : undefined,
       // Matches the existing free-text `location` contains-filter's case sensitivity exactly
-      // (Prisma's default `contains` on SQLite is case-sensitive) — remoteOnly is just another
-      // `location`-shaped condition, combined via AND below rather than a duplicate object key.
+      // (Prisma's default `contains` on SQLite is case-INsensitive-for-ASCII, confirmed live
+      // against real data — see the `workMode` comment above, which already had this right) —
+      // remoteOnly is just another `location`-shaped condition, combined via AND below rather
+      // than a duplicate object key.
       source: source ? { type: source as string } : undefined,
+      // `discoveredAt` is non-null on 587/587 active postings (unlike `postedAt`, null on ~90%),
+      // so this is the recency filter that actually works for every posting, not just the
+      // minority with a scraped post date.
+      discoveredAt: parsedDiscoveredAfter ? { gte: new Date(parsedDiscoveredAfter) } : undefined,
+      // A real `where` clause (not a JS post-filter, unlike matchedSkill below) — it shrinks the
+      // cohort at the DB level, same as every other exact-match filter here.
+      applications: excludeInPipeline === "true" ? { none: {} } : undefined,
       organization: organization ? (organization as string) : undefined,
       // Exact-match boolean filter, same "true"/"false" string-coercion pattern as
       // hideDuplicates/showDismissed above — Express query params always arrive as strings.
@@ -118,7 +194,9 @@ postingsRouter.get(
       dismissedAt: showDismissed === "true" ? undefined : null,
       ...statusFilter,
       AND: [
-        q ? { OR: [{ title: { contains: q as string } }, { organization: { contains: q as string } }] } : {},
+        ...(typeof q === "string" && q.trim().length > 0
+          ? parseSearchTokens(q).map(({ term, negate }) => (negate ? { NOT: searchTermClause(term) } : searchTermClause(term)))
+          : []),
         hideDuplicates === "true" ? { OR: [{ possibleDuplicateOfId: null }, { duplicateRejected: true }] } : {},
         location ? { location: { contains: location as string } } : {},
         remoteOnly === "true" ? { location: { contains: "remote" } } : {},
@@ -152,6 +230,17 @@ postingsRouter.get(
       if (hasMinFit) {
         scored = scored.filter((p) => (p.fitScore ?? 0) >= parsedMinFit!);
       }
+      // `matchedSkills` comes from computeFitScore, not a DB column, so — like minFit — it has to
+      // be applied here in JS, AFTER percentile normalization has already been computed against
+      // the full cohort. Narrowing to one skill must never re-rank the surviving rows: their
+      // fitScore/fitTier stay exactly what they were computed as above. Deliberately NOT pushed
+      // into the Prisma `where` as a `description: { contains: skill }` — that would disagree with
+      // countSkillMatches's word-boundary regex (a single-char skill like "r" matching inside
+      // "R&D" is exactly what buildSkillRegex's lookahead guards against) and would silently
+      // shrink the cohort BEFORE normalization, shifting everyone else's percentile too.
+      if (matchedSkillFilter) {
+        scored = scored.filter((p) => (p.matchedSkills ?? []).some((s) => s.toLowerCase() === matchedSkillFilter));
+      }
       if (sort === "fit_desc") {
         scored.sort(
           (a, b) =>
@@ -163,37 +252,66 @@ postingsRouter.get(
         const sortOrder =
           typeof sort === "string" && sort in SORT_OPTIONS ? SORT_OPTIONS[sort as keyof typeof SORT_OPTIONS] : SORT_OPTIONS.discoveredAt_desc;
         const [field, direction] = Object.entries(sortOrder)[0] as [string, "asc" | "desc"];
-        scored.sort((a, b) => {
-          const av = (a as any)[field];
-          const bv = (b as any)[field];
-          const cmp = av === bv ? 0 : av === null ? 1 : bv === null ? -1 : +new Date(av) - +new Date(bv);
-          return direction === "asc" ? cmp : -cmp;
-        });
+        // Nulls sort LAST regardless of direction (see compareNullsLast) — the old version fed
+        // the null branch into `asc ? cmp : -cmp`, so nulls landed last on asc but FIRST on desc
+        // (the bug that made postedAt_desc open with ~526 undated rows). Also gives every non-fit
+        // sort an id tiebreak, matching the fit_desc branch above — postings ingested in one batch
+        // can share discoveredAt to the millisecond, and with pagination re-sorting+re-slicing a
+        // freshly fetched array per request, an unstable order can drop or duplicate rows across
+        // page boundaries.
+        scored.sort((a, b) => compareNullsLast(a, b, field, direction));
       }
-      // X-Total-Count reflects the post-minFit-filter count, not the unfiltered cohort total,
-      // since that's the count that actually matches the request.
+      // X-Total-Count reflects the post-minFit/matchedSkill-filter count, not the unfiltered
+      // cohort total, since that's the count that actually matches the request. X-Fit-Cohort-Size
+      // is different on purpose: it's the size of the cohort percentiles were computed AGAINST
+      // (before minFit/matchedSkill narrow the result), so the UI can explain "ranked against N
+      // postings in this view" even when the visible list is much smaller.
       const total = scored.length;
       const start = skip ?? 0;
       const end = take !== undefined ? start + take : undefined;
       const paged = scored.slice(start, end);
       res.set("X-Total-Count", String(total));
+      res.set("X-Fit-Cohort-Size", String(allPostings.length));
       res.json(paged);
       return;
     }
 
-    const [postings, total] = await Promise.all([
-      prisma.posting.findMany({
-        where,
-        include: { source: true, applications: true, possibleDuplicateOf: true },
-        orderBy:
-          typeof sort === "string" && sort in SORT_OPTIONS
-            ? SORT_OPTIONS[sort as keyof typeof SORT_OPTIONS]
-            : SORT_OPTIONS.discoveredAt_desc,
-        take,
-        skip,
-      }),
-      prisma.posting.count({ where }),
-    ]);
+    // postedAt is nullable (~90% null on real data) and Prisma/SQLite's default null-ordering
+    // puts nulls FIRST on both directions — same bug as the profile-exists path above, just via
+    // Prisma's own orderBy instead of a JS comparator. discoveredAt is non-null on every posting,
+    // so its two sorts stay on the simple Prisma orderBy+take+skip path; postedAt sorts fetch the
+    // full matching set and use the same null-safe JS comparator instead.
+    const isPostedAtSort = sort === "postedAt_asc" || sort === "postedAt_desc";
+    let postings: Awaited<ReturnType<typeof prisma.posting.findMany>>;
+    let total: number;
+    if (isPostedAtSort) {
+      const direction = sort === "postedAt_asc" ? "asc" : "desc";
+      const [all, count] = await Promise.all([
+        prisma.posting.findMany({ where, include: { source: true, applications: true, possibleDuplicateOf: true } }),
+        prisma.posting.count({ where }),
+      ]);
+      all.sort((a, b) => compareNullsLast(a, b, "postedAt", direction));
+      const start = skip ?? 0;
+      const end = take !== undefined ? start + take : undefined;
+      postings = all.slice(start, end);
+      total = count;
+    } else {
+      const [rows, count] = await Promise.all([
+        prisma.posting.findMany({
+          where,
+          include: { source: true, applications: true, possibleDuplicateOf: true },
+          orderBy:
+            typeof sort === "string" && sort in SORT_OPTIONS
+              ? SORT_OPTIONS[sort as keyof typeof SORT_OPTIONS]
+              : SORT_OPTIONS.discoveredAt_desc,
+          take,
+          skip,
+        }),
+        prisma.posting.count({ where }),
+      ]);
+      postings = rows;
+      total = count;
+    }
     // Exposed via a header, not the body, so the response stays a bare array — every existing
     // consumer/test asserting on res.body directly keeps working unchanged.
     res.set("X-Total-Count", String(total));
@@ -229,6 +347,8 @@ postingsRouter.get(
       sourceSectionRows,
       internshipTrueCount,
       internshipFalseCount,
+      allActiveCount,
+      inUseSourceIdRows,
     ] = await Promise.all([
       prisma.posting.findMany({
         where: { seniority: { not: null } },
@@ -268,11 +388,32 @@ postingsRouter.get(
       // documented past mistake in this file; isInternship's counts deliberately match exactly.
       prisma.posting.count({ where: { isInternship: true, closedAt: null, dismissedAt: null } }),
       prisma.posting.count({ where: { isInternship: false, closedAt: null, dismissedAt: null } }),
+      // Unscoped active+undismissed total — makes the 587-vs-547 "40 postings unreachable through
+      // any tab" gap legible (mlbTeamCounts.true + sourceSectionCounts' 3 values don't sum to the
+      // real total, since 40 active postings match neither isMlbTeam=true nor any of the 3
+      // sourceSection values — e.g. a non-baseball org from an adapter that isn't the SimplifyJobs
+      // list). Same active/undismissed scope as every other count in this endpoint.
+      prisma.posting.count({ where: { closedAt: null, dismissedAt: null } }),
+      // Distinct ATS source TYPES actually in use by an active, undismissed posting right now —
+      // not every `type` that has ever existed in the Source table (a source can be fully closed
+      // out, e.g. a team whose only listing closed), so this only lists platforms a "Source" filter
+      // in the UI would actually return non-empty results for.
+      prisma.posting.findMany({
+        where: { closedAt: null, dismissedAt: null },
+        select: { sourceId: true },
+        distinct: ["sourceId"],
+      }),
     ]);
     const sourceSectionCounts: Record<string, number> = {};
     for (const row of sourceSectionRows) {
       if (row.sourceSection) sourceSectionCounts[row.sourceSection] = row._count.sourceSection;
     }
+    const activeSourceRows = await prisma.source.findMany({
+      where: { id: { in: inUseSourceIdRows.map((r) => r.sourceId) } },
+      select: { type: true },
+      distinct: ["type"],
+      orderBy: { type: "asc" },
+    });
     res.json({
       seniorities: seniorityRows.map((r) => r.seniority),
       workModes: workModeRows.map((r) => r.workMode),
@@ -280,6 +421,8 @@ postingsRouter.get(
       mlbTeamCounts: { true: mlbTeamTrueCount, false: mlbTeamFalseCount },
       sourceSectionCounts,
       internshipCounts: { true: internshipTrueCount, false: internshipFalseCount },
+      allActiveCount,
+      sourceTypes: activeSourceRows.map((r) => r.type),
     });
   })
 );

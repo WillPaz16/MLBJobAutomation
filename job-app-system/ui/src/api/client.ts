@@ -13,6 +13,7 @@ import type {
   PrepContext,
   ProfileCoverage,
   ResumeBullet,
+  SavedSearch,
 } from "./types";
 
 const BASE = "/api";
@@ -67,9 +68,12 @@ export const api = {
       isMlbTeam?: boolean;
       sourceSection?: string;
       isInternship?: string;
+      discoveredAfter?: string;
+      excludeInPipeline?: boolean;
+      matchedSkill?: string;
       take?: number;
       skip?: number;
-    }): Promise<{ postings: Posting[]; total: number }> => {
+    }): Promise<{ postings: Posting[]; total: number; fitCohortSize: number | null }> => {
       const entries = Object.entries(params ?? {}).filter(([, v]) => v !== undefined && v !== "") as [
         string,
         string,
@@ -92,7 +96,12 @@ export const api = {
       }
       const postings = (await res.json()) as Posting[];
       const total = Number(res.headers.get("X-Total-Count") ?? postings.length);
-      return { postings, total };
+      // Only present when a CandidateProfile exists (see postings.ts) — the size of the cohort
+      // percentiles were normalized against, surfaced so the UI can explain "ranked against N
+      // postings in this view" (the fit-percentile-varies-by-cohort tooltip).
+      const cohortSizeHeader = res.headers.get("X-Fit-Cohort-Size");
+      const fitCohortSize = cohortSizeHeader !== null ? Number(cohortSizeHeader) : null;
+      return { postings, total, fitCohortSize };
     },
     get: (id: string) => request<Posting>(`/postings/${id}`),
     organizations: () => request<string[]>("/postings/organizations"),
@@ -104,6 +113,8 @@ export const api = {
         mlbTeamCounts: { true: number; false: number };
         sourceSectionCounts: Record<string, number>;
         internshipCounts: { true: number; false: number };
+        allActiveCount: number;
+        sourceTypes: string[];
       }>("/postings/facets"),
     approve: (id: string) => request<Application>(`/postings/${id}/approve`, { method: "POST" }),
     remove: (id: string) => request<void>(`/postings/${id}`, { method: "DELETE" }),
@@ -176,5 +187,13 @@ export const api = {
     coverage: () => request<ProfileCoverage>("/profile/coverage"),
     previewCoverage: (draft: CandidateProfileInput) =>
       request<ProfileCoverage>("/profile/coverage/preview", { method: "POST", body: JSON.stringify(draft) }),
+  },
+  savedSearches: {
+    list: () => request<SavedSearch[]>("/saved-searches"),
+    create: (data: { name: string; query: string; isDefault?: boolean }) =>
+      request<SavedSearch>("/saved-searches", { method: "POST", body: JSON.stringify(data) }),
+    update: (id: string, data: Partial<{ name: string; query: string; isDefault: boolean }>) =>
+      request<SavedSearch>(`/saved-searches/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    remove: (id: string) => request<void>(`/saved-searches/${id}`, { method: "DELETE" }),
   },
 };

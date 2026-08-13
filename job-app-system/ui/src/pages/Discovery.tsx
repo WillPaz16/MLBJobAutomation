@@ -1,23 +1,46 @@
-import { useEffect, useState } from "react";
-import { AlertTriangle, CircleAlert, ExternalLink, Info, Search, SlidersHorizontal, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import {
+  AlertTriangle,
+  Bookmark,
+  CircleAlert,
+  ExternalLink,
+  Info,
+  Search,
+  Star,
+  Trash2,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../api/client";
-import type { Application, Posting, PostingCategory } from "../api/types";
+import type { Application, Posting, PostingCategory, SavedSearch } from "../api/types";
 import { htmlToPlainText, snippet } from "@/lib/utils";
 import {
   CATEGORY_FILTER_OPTIONS,
   CATEGORY_LABELS,
+  DEFAULT_SORT,
+  DISCOVERY_FILTER_NAMES,
   DISCOVERY_TAB_LABELS,
   DISCOVERY_TAB_ORDER,
   DISCOVERY_TAB_SOURCE_SECTIONS,
   INTERNSHIP_FILTER_OPTIONS,
+  MIN_FIT_LABELS,
+  MIN_FIT_OPTIONS,
+  RECENCY_LABELS,
+  RECENCY_OPTIONS,
   REGION_FILTER_OPTIONS,
   REGION_LABELS,
   SENIORITY_FILTER_OPTIONS,
   SENIORITY_LABELS,
+  SORT_LABELS,
+  SORTS,
+  SOURCE_LABELS,
+  STATUS_LABELS,
+  STATUSES,
   WORK_MODE_FILTER_OPTIONS,
   WORK_MODE_LABELS,
+  optionsToLabels,
   type DiscoveryTab,
+  type DiscoverySortOption,
 } from "@/lib/labels";
 import { useFilterParams } from "@/hooks/useFilterParams";
 import { useEntrance } from "@/lib/useEntrance";
@@ -25,6 +48,7 @@ import { Pagination } from "@/components/Pagination";
 import { ErrorState } from "@/components/states/ErrorState";
 import { EmptyState } from "@/components/states/EmptyState";
 import { NotificationBanner } from "@/components/NotificationBanner";
+import { FilterField } from "@/components/FilterField";
 import { PageLayout, PageHeader } from "@/components/PageLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,8 +59,14 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Dialog,
   DialogContent,
@@ -47,38 +77,11 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-const STATUSES: { value: "active" | "closed" | "all"; label: string }[] = [
-  { value: "active", label: "Active only" },
-  { value: "closed", label: "Closed only" },
-  { value: "all", label: "All statuses" },
-];
-const STATUS_LABELS = Object.fromEntries(STATUSES.map((s) => [s.value, s.label]));
-
-type SortOption = "discoveredAt_desc" | "discoveredAt_asc" | "postedAt_desc" | "postedAt_asc" | "fit_desc";
-
-const SORTS: { value: SortOption; label: string }[] = [
-  { value: "fit_desc", label: "Best fit first" },
-  { value: "discoveredAt_desc", label: "Newest found first" },
-  { value: "discoveredAt_asc", label: "Oldest found first" },
-  { value: "postedAt_desc", label: "Newest posted first" },
-  { value: "postedAt_asc", label: "Oldest posted first" },
-];
-const SORT_LABELS = Object.fromEntries(SORTS.map((s) => [s.value, s.label]));
-
-// Thresholds match api/src/fitScore.ts's fitTier boundaries exactly (Strong>=65, Good>=40,
-// Fair>=20, Weak<20) — the "or better" floor for each preset is that tier's own lower bound.
-const MIN_FIT_OPTIONS: { value: string; label: string }[] = [
-  { value: "none", label: "Any fit" },
-  { value: "20", label: "Fair or better" },
-  { value: "40", label: "Good or better" },
-  { value: "65", label: "Strong only" },
-];
-const MIN_FIT_LABELS = Object.fromEntries(MIN_FIT_OPTIONS.map((o) => [o.value, o.label]));
-const CATEGORY_FILTER_LABELS = Object.fromEntries(CATEGORY_FILTER_OPTIONS.map((o) => [o.value, o.label]));
-const SENIORITY_FILTER_LABELS = Object.fromEntries(SENIORITY_FILTER_OPTIONS.map((o) => [o.value, o.label]));
-const WORK_MODE_FILTER_LABELS = Object.fromEntries(WORK_MODE_FILTER_OPTIONS.map((o) => [o.value, o.label]));
-const REGION_FILTER_LABELS = Object.fromEntries(REGION_FILTER_OPTIONS.map((o) => [o.value, o.label]));
-const INTERNSHIP_LABELS = Object.fromEntries(INTERNSHIP_FILTER_OPTIONS.map((o) => [o.value, o.label]));
+const CATEGORY_FILTER_LABELS = optionsToLabels(CATEGORY_FILTER_OPTIONS);
+const SENIORITY_FILTER_LABELS = optionsToLabels(SENIORITY_FILTER_OPTIONS);
+const WORK_MODE_FILTER_LABELS = optionsToLabels(WORK_MODE_FILTER_OPTIONS);
+const REGION_FILTER_LABELS = optionsToLabels(REGION_FILTER_OPTIONS);
+const INTERNSHIP_LABELS = optionsToLabels(INTERNSHIP_FILTER_OPTIONS);
 
 // Tier-based styling replaces the old numeric-threshold badge coloring now that the API returns
 // `fitTier` (Phase 2) — Strong/Good map to the same green/amber classes the app already used,
@@ -89,6 +92,26 @@ function fitBadgeClassName(tier: string | null | undefined): string {
   return "gap-1 text-muted-foreground";
 }
 
+// Row-B ("More filters") members — used both to build the disclosure count and to decide whether
+// a hidden filter must force the section open on mount. Deliberately excludes Row A's own filters
+// (search/discoveredAfter aka recency/minFit/sort) and the tab/pageSize params, which aren't part
+// of either filter row.
+const ROW_B_KEYS = [
+  "category",
+  "seniority",
+  "isInternship",
+  "matchedSkill",
+  "location",
+  "workMode",
+  "region",
+  "organization",
+  "source",
+  "status",
+  "hideDuplicates",
+  "showDismissed",
+  "excludeInPipeline",
+] as const;
+
 const FILTER_DEFAULTS: Record<string, string> = {
   tab: "baseball",
   category: "all",
@@ -96,7 +119,7 @@ const FILTER_DEFAULTS: Record<string, string> = {
   search: "",
   organization: "all",
   status: "active",
-  sort: "fit_desc",
+  sort: DEFAULT_SORT,
   hideDuplicates: "true",
   showDismissed: "false",
   pageSize: "25",
@@ -105,24 +128,62 @@ const FILTER_DEFAULTS: Record<string, string> = {
   region: "all",
   minFit: "none",
   isInternship: "all",
+  recency: "any",
+  source: "all",
+  excludeInPipeline: "false",
+  matchedSkill: "all",
 };
 
-const FILTER_CHIP_LABELS: Record<string, (value: string) => string> = {
-  category: (v) => `Category: ${CATEGORY_LABELS[v as PostingCategory] ?? v}`,
-  location: (v) => `Location: ${v}`,
-  search: (v) => `Search: ${v}`,
-  organization: (v) => `Team/Company: ${v}`,
-  status: (v) => `Status: ${STATUSES.find((s) => s.value === v)?.label ?? v}`,
-  sort: (v) => `Sort: ${SORTS.find((s) => s.value === v)?.label ?? v}`,
-  hideDuplicates: () => "Hide flagged duplicates: off",
-  showDismissed: () => "Show dismissed: on",
-  pageSize: (v) => `Rows per page: ${v}`,
-  seniority: (v) => `Level: ${SENIORITY_LABELS[v] ?? v}`,
-  workMode: (v) => `Work mode: ${WORK_MODE_LABELS[v] ?? v}`,
-  region: (v) => `Region: ${REGION_LABELS[v] ?? v}`,
-  minFit: (v) => `Fit: ${MIN_FIT_OPTIONS.find((o) => o.value === v)?.label ?? v}`,
-  isInternship: (v) => `Type: ${INTERNSHIP_FILTER_OPTIONS.find((o) => o.value === v)?.label ?? v}`,
-};
+function chipValueLabel(key: string, value: string): string {
+  switch (key) {
+    case "category":
+      return CATEGORY_LABELS[value as PostingCategory] ?? value;
+    case "location":
+      return value;
+    case "search":
+      return value;
+    case "organization":
+      return value;
+    case "status":
+      return STATUSES.find((s) => s.value === value)?.label ?? value;
+    case "sort":
+      return SORTS.find((s) => s.value === value)?.label ?? value;
+    case "hideDuplicates":
+      return "off";
+    case "showDismissed":
+      return "on";
+    case "pageSize":
+      return value;
+    case "seniority":
+      return SENIORITY_LABELS[value] ?? value;
+    case "workMode":
+      return WORK_MODE_LABELS[value] ?? value;
+    case "region":
+      return REGION_LABELS[value] ?? value;
+    case "minFit":
+      return MIN_FIT_OPTIONS.find((o) => o.value === value)?.label ?? value;
+    case "isInternship":
+      return INTERNSHIP_FILTER_OPTIONS.find((o) => o.value === value)?.label ?? value;
+    case "recency":
+      return RECENCY_OPTIONS.find((o) => o.value === value)?.label ?? value;
+    case "source":
+      return SOURCE_LABELS[value] ?? value;
+    case "excludeInPipeline":
+      return "on";
+    case "matchedSkill":
+      return value;
+    default:
+      return value;
+  }
+}
+
+// Every chip label is built from the same DISCOVERY_FILTER_NAMES map used for aria-labels below —
+// this is the fix for the aria-label bug (it used to emit the raw camelCase key, e.g. "Clear
+// isInternship filter") as well as the single source of truth for the visible chip text.
+function chipLabel(key: string, value: string): string {
+  const name = DISCOVERY_FILTER_NAMES[key] ?? key;
+  return `${name}: ${chipValueLabel(key, value)}`;
+}
 
 function useDebounced<T>(value: T, delayMs: number): T {
   const [debounced, setDebounced] = useState(value);
@@ -160,19 +221,26 @@ async function runInBatches<T, R>(
   return results;
 }
 
+const MORE_FILTERS_STORAGE_KEY = "discovery-more-filters-expanded";
+
 export function Discovery() {
-  const { filters, setFilter, page, setPage, activeFilters, clearFilters } = useFilterParams(FILTER_DEFAULTS);
+  const { filters, setFilter, page, setPage, activeFilters, clearFilters, applyQueryString, searchParams } =
+    useFilterParams(FILTER_DEFAULTS);
   const entrance = useEntrance();
 
   const [postings, setPostings] = useState<Posting[]>([]);
   const [organizations, setOrganizations] = useState<string[]>([]);
+  const [sourceTypes, setSourceTypes] = useState<string[]>([]);
+  const [profileSkills, setProfileSkills] = useState<string[]>([]);
   const [tabCounts, setTabCounts] = useState<Record<DiscoveryTab, number>>({
+    all: 0,
     baseball: 0,
     "ds-ai-ml": 0,
     quant: 0,
     pm: 0,
   });
   const [total, setTotal] = useState(0);
+  const [fitCohortSize, setFitCohortSize] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [approvingIds, setApprovingIds] = useState<Set<string>>(new Set());
@@ -202,6 +270,14 @@ export function Discovery() {
 
   const pageSize = Number(filters.pageSize) || 25;
 
+  // Extracted so every place that resets these two debounced text inputs (chip-clear, Clear all,
+  // and applying a saved search) goes through one function — previously this reseed was
+  // duplicated ad hoc at each call site.
+  function resetTextInputs(nextSearch = "", nextLocation = "") {
+    setSearchInput(nextSearch);
+    setLocationInput(nextLocation);
+  }
+
   useEffect(() => {
     setFilter("location", debouncedLocation, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -212,32 +288,79 @@ export function Discovery() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedSearch]);
 
+  // ---- More filters (Row B) disclosure ------------------------------------------------------
+  const [expanded, setExpanded] = useState(() => {
+    try {
+      return localStorage.getItem(MORE_FILTERS_STORAGE_KEY) === "true";
+    } catch {
+      return false;
+    }
+  });
+  const rowBForceCheckedRef = useRef(false);
+  const rowBActiveCount = ROW_B_KEYS.filter((key) => filters[key] !== FILTER_DEFAULTS[key]).length;
+  useEffect(() => {
+    // A hidden active filter must never be invisible — force Row B open once on mount if any of
+    // its filters is already non-default (e.g. arriving via a saved-search/shared URL). Only ever
+    // forces OPEN, never closed, and only once — a ref guard (not a dependency-array trick) keeps
+    // this from re-forcing itself back open every time the user deliberately collapses it later
+    // while a Row-B filter happens to still be active.
+    if (rowBForceCheckedRef.current) return;
+    rowBForceCheckedRef.current = true;
+    if (rowBActiveCount > 0) setExpanded(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  function toggleExpanded() {
+    setExpanded((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(MORE_FILTERS_STORAGE_KEY, String(next));
+      } catch {
+        // localStorage unavailable (e.g. private browsing) — the toggle still works for this
+        // session, it just won't persist across reloads.
+      }
+      return next;
+    });
+  }
+
   async function load() {
     setLoading(true);
     setError(null);
     try {
       const tab = (filters.tab as DiscoveryTab) ?? "baseball";
-      const { postings: data, total: newTotal } = await api.postings.list({
+      const recencyDays = filters.recency !== "any" ? Number(filters.recency) : undefined;
+      const discoveredAfter =
+        recencyDays !== undefined && !Number.isNaN(recencyDays)
+          ? new Date(Date.now() - recencyDays * 86_400_000).toISOString()
+          : undefined;
+      const { postings: data, total: newTotal, fitCohortSize: cohortSize } = await api.postings.list({
         category: filters.category === "all" ? undefined : filters.category,
         location: filters.location || undefined,
         q: filters.search || undefined,
         organization: filters.organization === "all" ? undefined : filters.organization,
+        source: filters.source === "all" ? undefined : filters.source,
         status: filters.status as "active" | "closed" | "all",
-        sort: filters.sort as SortOption,
+        sort: filters.sort as DiscoverySortOption,
         hideDuplicates: filters.hideDuplicates === "true",
         showDismissed: filters.showDismissed === "true",
         seniority: filters.seniority === "all" ? undefined : filters.seniority,
         workMode: filters.workMode === "all" ? undefined : filters.workMode,
         region: filters.region === "all" ? undefined : filters.region,
         minFit: filters.minFit === "none" ? undefined : Number(filters.minFit),
-        isMlbTeam: tab === "baseball",
-        sourceSection: tab === "baseball" ? undefined : DISCOVERY_TAB_SOURCE_SECTIONS[tab],
+        // Everything (tab=all): no isMlbTeam/sourceSection scoping at all. Baseball: isMlbTeam
+        // true. The other three tabs: isMlbTeam false + their sourceSection value (isMlbTeam:false
+        // is redundant with sourceSection in practice, but harmless and matches prior behavior).
+        isMlbTeam: tab === "all" ? undefined : tab === "baseball",
+        sourceSection: tab === "baseball" || tab === "all" ? undefined : DISCOVERY_TAB_SOURCE_SECTIONS[tab],
         isInternship: filters.isInternship === "all" ? undefined : filters.isInternship,
+        discoveredAfter,
+        excludeInPipeline: filters.excludeInPipeline === "true" ? true : undefined,
+        matchedSkill: filters.matchedSkill === "all" ? undefined : filters.matchedSkill,
         take: pageSize,
         skip: (page - 1) * pageSize,
       });
       setPostings(data);
       setTotal(newTotal);
+      setFitCohortSize(cohortSize);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load postings");
     } finally {
@@ -263,6 +386,21 @@ export function Discovery() {
       .catch(() => {
         // silently skip — the organization filter just stays empty if this fails
       });
+    api.profile
+      .get()
+      .then((profile) => {
+        if (!profile) return;
+        const skills = [profile.coreSkills, profile.skills]
+          .filter((v): v is string => Boolean(v))
+          .join(",")
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        setProfileSkills([...new Set(skills)]);
+      })
+      .catch(() => {
+        // silently skip — matched-skill filter just stays empty if no profile exists
+      });
   }, []);
 
   // Tab counts intentionally come from one mount-time facets() call, not re-derived from the
@@ -274,16 +412,109 @@ export function Discovery() {
       .facets()
       .then((facets) => {
         setTabCounts({
+          all: facets.allActiveCount ?? 0,
           baseball: facets.mlbTeamCounts.true ?? 0,
           "ds-ai-ml": facets.sourceSectionCounts["Data Science, AI & Machine Learning"] ?? 0,
           quant: facets.sourceSectionCounts["Quantitative Finance"] ?? 0,
           pm: facets.sourceSectionCounts["Product Management"] ?? 0,
         });
+        setSourceTypes(facets.sourceTypes ?? []);
       })
       .catch(() => {
-        // silently skip — tab labels just show without counts if this fails
+        // silently skip — tab labels/source filter just show without counts/options if this fails
       });
   }, []);
+
+  // ---- Saved searches (stored in the DB, not localStorage — see SavedSearch model) -----------
+  const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [saveName, setSaveName] = useState("");
+  const [saveAsDefault, setSaveAsDefault] = useState(false);
+  const [savingSearch, setSavingSearch] = useState(false);
+  const defaultAppliedRef = useRef(false);
+
+  function loadSavedSearches() {
+    api.savedSearches
+      .list()
+      .then(setSavedSearches)
+      .catch(() => {
+        // silently skip — the Bookmark menu just shows no saved searches if this fails
+      });
+  }
+
+  useEffect(() => {
+    loadSavedSearches();
+  }, []);
+
+  // Default-view-on-load, guarded to fire exactly once via a ref (not a dependency-array trick):
+  // without the guard, applying the default saved view would re-fire on every savedSearches
+  // refetch (e.g. after saving/deleting one), and "Clear all" would look broken — clearing the
+  // URL would instantly re-trigger the default view re-applying itself.
+  useEffect(() => {
+    if (defaultAppliedRef.current) return;
+    if (savedSearches.length === 0) return;
+    defaultAppliedRef.current = true;
+    // Only auto-apply if the URL is otherwise at its defaults — arriving with an explicit
+    // filter/shared-link URL should never be silently overridden by a saved default.
+    if (activeFilters.length > 0) return;
+    const defaultSearch = savedSearches.find((s) => s.isDefault);
+    if (defaultSearch) applySavedSearch(defaultSearch);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savedSearches]);
+
+  // Applies a saved search's stored query string. The one real trap here (the "debounce clobber"):
+  // locationInput/searchInput are local state feeding 300ms-debounced effects that eventually
+  // overwrite the URL's location/search params — so applying a saved view while the box holds
+  // different text would get silently overwritten 300ms later by the STALE input value. Reseeding
+  // both inputs in the SAME commit as applying the filters (via applyQueryString, which replaces
+  // every filter in one setSearchParams call) closes that gap.
+  function applySavedSearch(saved: SavedSearch) {
+    const params = new URLSearchParams(saved.query);
+    resetTextInputs(params.get("search") ?? "", params.get("location") ?? "");
+    applyQueryString(saved.query);
+  }
+
+  async function saveCurrentView() {
+    if (!saveName.trim()) {
+      toast.error("Name is required");
+      return;
+    }
+    setSavingSearch(true);
+    try {
+      // searchParams already excludes "page" (useFilterParams never writes it for page<=1, and a
+      // saved view shouldn't pin a page anyway) and only contains non-default values.
+      const query = searchParams.toString();
+      await api.savedSearches.create({ name: saveName.trim(), query, isDefault: saveAsDefault });
+      toast.success("View saved");
+      setSaveDialogOpen(false);
+      setSaveName("");
+      setSaveAsDefault(false);
+      loadSavedSearches();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save view");
+    } finally {
+      setSavingSearch(false);
+    }
+  }
+
+  async function setSearchDefault(saved: SavedSearch) {
+    try {
+      await api.savedSearches.update(saved.id, { isDefault: !saved.isDefault });
+      loadSavedSearches();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update saved view");
+    }
+  }
+
+  async function deleteSavedSearch(saved: SavedSearch) {
+    try {
+      await api.savedSearches.remove(saved.id);
+      toast.success("Saved view deleted");
+      loadSavedSearches();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete saved view");
+    }
+  }
 
   async function approve(id: string) {
     setApprovingIds((prev) => new Set(prev).add(id));
@@ -466,6 +697,15 @@ export function Discovery() {
     });
   }
 
+  function clearAll() {
+    resetTextInputs();
+    clearFilters();
+  }
+
+  const sourceFilterLabels: Record<string, string> = optionsToLabels(
+    sourceTypes.map((t) => ({ value: t, label: SOURCE_LABELS[t] ?? t }))
+  );
+
   return (
     <PageLayout>
       <NotificationBanner />
@@ -549,7 +789,7 @@ export function Discovery() {
       <Tabs
         value={filters.tab}
         onValueChange={(v) => setFilter("tab", (v as string) ?? "baseball")}
-        className="mb-4"
+        className="mb-1"
       >
         <TabsList variant="line">
           {DISCOVERY_TAB_ORDER.map((t) => (
@@ -559,173 +799,57 @@ export function Discovery() {
           ))}
         </TabsList>
       </Tabs>
+      {/* fitScore is a percentile WITHIN the current tab's cohort, not an absolute claim — the
+          same posting can rank differently in Everything vs. its own tab, so this stays visible
+          rather than only surfacing in a tooltip. */}
+      <p className="mb-3 text-xs text-muted-foreground">
+        Fit is ranked within the current tab
+        {fitCohortSize != null && ` (against ${fitCohortSize.toLocaleString()} posting${fitCohortSize === 1 ? "" : "s"} in this view)`}.
+      </p>
 
-      <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <div>
-          <Label htmlFor="filter-category" className="mb-1">
-            Category
-          </Label>
-          <Select value={filters.category} onValueChange={(v) => setFilter("category", v ?? "all")}>
-            <SelectTrigger id="filter-category" className="w-full">
-              <SelectValue labels={CATEGORY_FILTER_LABELS} />
-            </SelectTrigger>
-            <SelectContent>
-              {CATEGORY_FILTER_OPTIONS.map((c) => (
-                <SelectItem key={c.value} value={c.value}>
-                  {c.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div>
-          <Label htmlFor="filter-seniority" className="mb-1">
-            Level
-          </Label>
-          <Select value={filters.seniority} onValueChange={(v) => setFilter("seniority", v ?? "all")}>
-            <SelectTrigger id="filter-seniority" className="w-full">
-              <SelectValue labels={SENIORITY_FILTER_LABELS} />
-            </SelectTrigger>
-            <SelectContent>
-              {SENIORITY_FILTER_OPTIONS.map((s) => (
-                <SelectItem key={s.value} value={s.value}>
-                  {s.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div>
-          <Label htmlFor="filter-work-mode" className="mb-1">
-            Work mode
-          </Label>
-          <Select value={filters.workMode} onValueChange={(v) => setFilter("workMode", v ?? "all")}>
-            <SelectTrigger id="filter-work-mode" className="w-full">
-              <SelectValue labels={WORK_MODE_FILTER_LABELS} />
-            </SelectTrigger>
-            <SelectContent>
-              {WORK_MODE_FILTER_OPTIONS.map((o) => (
-                <SelectItem key={o.value} value={o.value}>
-                  {o.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div>
-          <Label htmlFor="filter-region" className="mb-1">
-            Region
-          </Label>
-          <Select value={filters.region} onValueChange={(v) => setFilter("region", v ?? "all")}>
-            <SelectTrigger id="filter-region" className="w-full">
-              <SelectValue labels={REGION_FILTER_LABELS} />
-            </SelectTrigger>
-            <SelectContent>
-              {REGION_FILTER_OPTIONS.map((o) => (
-                <SelectItem key={o.value} value={o.value}>
-                  {o.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div>
-          <Label htmlFor="filter-internship" className="mb-1">
-            Type
-          </Label>
-          <Select value={filters.isInternship} onValueChange={(v) => setFilter("isInternship", v ?? "all")}>
-            <SelectTrigger id="filter-internship" className="w-full">
-              <SelectValue labels={INTERNSHIP_LABELS} />
-            </SelectTrigger>
-            <SelectContent>
-              {INTERNSHIP_FILTER_OPTIONS.map((o) => (
-                <SelectItem key={o.value} value={o.value}>
-                  {o.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div>
-          <Label htmlFor="filter-location" className="mb-1">
-            Location contains
-          </Label>
-          <Input
-            id="filter-location"
-            className="w-full"
-            placeholder="e.g. Chicago, Remote"
-            value={locationInput}
-            onChange={(e) => setLocationInput(e.target.value)}
-          />
-        </div>
-        <div>
-          <Label htmlFor="filter-search" className="mb-1">
-            Search title/org
-          </Label>
+      {/* Row A — always visible: Search, Discovered, Minimum fit, Sort, More filters disclosure. */}
+      <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <FilterField id="filter-search" label={DISCOVERY_FILTER_NAMES.search}>
           <Input
             id="filter-search"
             className="w-full"
-            placeholder="e.g. analytics, Cubs"
+            placeholder="e.g. analytics, Cubs, -intern"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
           />
-        </div>
-        <div>
-          <Label htmlFor="filter-organization" className="mb-1">
-            Team / Company
-          </Label>
-          <Select value={filters.organization} onValueChange={(v) => setFilter("organization", v ?? "all")}>
-            <SelectTrigger id="filter-organization" className="w-full">
-              <SelectValue>{(v: string) => (v === "all" ? "All teams / companies" : v)}</SelectValue>
+        </FilterField>
+        <FilterField id="filter-recency" label={DISCOVERY_FILTER_NAMES.discoveredAfter}>
+          <Select value={filters.recency} onValueChange={(v) => setFilter("recency", v ?? "any")}>
+            <SelectTrigger id="filter-recency" className="w-full">
+              <SelectValue labels={RECENCY_LABELS} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All teams / companies</SelectItem>
-              {organizations.map((org) => (
-                <SelectItem key={org} value={org}>
-                  {org}
+              {RECENCY_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {o.label}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-        </div>
-        <div>
-          <Label htmlFor="filter-status" className="mb-1">
-            Status
-          </Label>
-          <Select value={filters.status} onValueChange={(v) => setFilter("status", v ?? "active")}>
-            <SelectTrigger id="filter-status" className="w-full">
-              <SelectValue labels={STATUS_LABELS} />
-            </SelectTrigger>
-            <SelectContent>
-              {STATUSES.map((s) => (
-                <SelectItem key={s.value} value={s.value}>
-                  {s.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div>
-          <Label htmlFor="filter-sort" className="mb-1">
-            Sort
-          </Label>
-          <Select value={filters.sort} onValueChange={(v) => setFilter("sort", v ?? "discoveredAt_desc")}>
-            <SelectTrigger id="filter-sort" className="w-full">
-              <SelectValue labels={SORT_LABELS} />
-            </SelectTrigger>
-            <SelectContent>
-              {SORTS.map((s) => (
-                <SelectItem key={s.value} value={s.value}>
-                  {s.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div>
-          <Label htmlFor="filter-min-fit" className="mb-1">
-            Minimum fit
-          </Label>
+        </FilterField>
+        <FilterField
+          id="filter-min-fit"
+          label={
+            <span className="inline-flex items-center gap-1">
+              {DISCOVERY_FILTER_NAMES.minFit}
+              <Tooltip>
+                <TooltipTrigger render={<button type="button" aria-label="About fit ranking" />}>
+                  <Info className="h-3 w-3 text-muted-foreground" />
+                </TooltipTrigger>
+                <TooltipContent>
+                  Fit is a percentile rank against the postings currently in view
+                  {fitCohortSize != null ? ` (${fitCohortSize.toLocaleString()} postings)` : ""} — the same
+                  posting can score differently in a different tab.
+                </TooltipContent>
+              </Tooltip>
+            </span>
+          }
+        >
           <Select value={filters.minFit} onValueChange={(v) => setFilter("minFit", v ?? "none")}>
             <SelectTrigger id="filter-min-fit" className="w-full">
               <SelectValue labels={MIN_FIT_LABELS} />
@@ -738,46 +862,230 @@ export function Discovery() {
               ))}
             </SelectContent>
           </Select>
-        </div>
-        <div className="flex items-end">
-          <Popover>
-            <PopoverTrigger render={<Button variant="outline" size="sm" />}>
-              <SlidersHorizontal className="h-3.5 w-3.5" />
-              Options
-            </PopoverTrigger>
-            <PopoverContent>
-              <div className="flex items-center gap-1.5">
-                <Checkbox
-                  id="hide-duplicates"
-                  checked={filters.hideDuplicates === "true"}
-                  onCheckedChange={(checked) => setFilter("hideDuplicates", checked === true ? "true" : "false")}
-                />
-                <Label htmlFor="hide-duplicates" className="text-xs font-medium text-muted-foreground">
-                  Hide flagged duplicates
-                </Label>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <Checkbox
-                  id="show-dismissed"
-                  checked={filters.showDismissed === "true"}
-                  onCheckedChange={(checked) => setFilter("showDismissed", checked === true ? "true" : "false")}
-                />
-                <Label htmlFor="show-dismissed" className="text-xs font-medium text-muted-foreground">
-                  Show dismissed
-                </Label>
-              </div>
-            </PopoverContent>
-          </Popover>
+        </FilterField>
+        <FilterField id="filter-sort" label={DISCOVERY_FILTER_NAMES.sort}>
+          <Select value={filters.sort} onValueChange={(v) => setFilter("sort", v ?? DEFAULT_SORT)}>
+            <SelectTrigger id="filter-sort" className="w-full">
+              <SelectValue labels={SORT_LABELS} />
+            </SelectTrigger>
+            <SelectContent>
+              {SORTS.map((s) => (
+                <SelectItem key={s.value} value={s.value}>
+                  {s.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FilterField>
+        <div>
+          {/* Invisible-but-present Label restores baseline alignment with the other four cells
+              (each of which has a real Label above its control). */}
+          <Label className="mb-1 invisible">More filters</Label>
+          <Button variant="outline" className="h-8 w-full" onClick={toggleExpanded}>
+            More filters{rowBActiveCount > 0 ? ` · ${rowBActiveCount}` : ""}
+          </Button>
         </div>
       </div>
 
-      {activeFilters.filter((f) => f.key !== "tab").length > 0 && (
-        <div className="mb-4 flex flex-wrap items-center gap-1.5">
-          {activeFilters
-            .filter(({ key }) => key !== "tab")
-            .map(({ key, value }) => (
+      {/* Row B — collapsed by default, three semantic groups. Force-expanded on mount above if any
+          of its own filters was already non-default. The old Options popover is gone entirely. */}
+      {expanded && (
+        <div className="mb-3 grid grid-cols-1 gap-4 rounded-lg border bg-muted/20 p-3 lg:grid-cols-3">
+          <fieldset className="space-y-3">
+            <legend className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">What</legend>
+            <FilterField id="filter-category" label={DISCOVERY_FILTER_NAMES.category}>
+              <Select value={filters.category} onValueChange={(v) => setFilter("category", v ?? "all")}>
+                <SelectTrigger id="filter-category" className="w-full">
+                  <SelectValue labels={CATEGORY_FILTER_LABELS} />
+                </SelectTrigger>
+                <SelectContent>
+                  {CATEGORY_FILTER_OPTIONS.map((c) => (
+                    <SelectItem key={c.value} value={c.value}>
+                      {c.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FilterField>
+            <FilterField id="filter-seniority" label={DISCOVERY_FILTER_NAMES.seniority}>
+              <Select value={filters.seniority} onValueChange={(v) => setFilter("seniority", v ?? "all")}>
+                <SelectTrigger id="filter-seniority" className="w-full">
+                  <SelectValue labels={SENIORITY_FILTER_LABELS} />
+                </SelectTrigger>
+                <SelectContent>
+                  {SENIORITY_FILTER_OPTIONS.map((s) => (
+                    <SelectItem key={s.value} value={s.value}>
+                      {s.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FilterField>
+            <FilterField id="filter-internship" label={DISCOVERY_FILTER_NAMES.isInternship}>
+              <Select value={filters.isInternship} onValueChange={(v) => setFilter("isInternship", v ?? "all")}>
+                <SelectTrigger id="filter-internship" className="w-full">
+                  <SelectValue labels={INTERNSHIP_LABELS} />
+                </SelectTrigger>
+                <SelectContent>
+                  {INTERNSHIP_FILTER_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FilterField>
+            <FilterField id="filter-matched-skill" label={DISCOVERY_FILTER_NAMES.matchedSkill}>
+              <Select value={filters.matchedSkill} onValueChange={(v) => setFilter("matchedSkill", v ?? "all")}>
+                <SelectTrigger id="filter-matched-skill" className="w-full">
+                  <SelectValue>{(v: string) => (v === "all" ? "Any skill" : v)}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Any skill</SelectItem>
+                  {profileSkills.map((skill) => (
+                    <SelectItem key={skill} value={skill}>
+                      {skill}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FilterField>
+          </fieldset>
+
+          <fieldset className="space-y-3">
+            <legend className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Where</legend>
+            <FilterField id="filter-location" label={DISCOVERY_FILTER_NAMES.location}>
+              <Input
+                id="filter-location"
+                className="w-full"
+                placeholder="e.g. Chicago, Remote"
+                value={locationInput}
+                onChange={(e) => setLocationInput(e.target.value)}
+              />
+            </FilterField>
+            <FilterField id="filter-work-mode" label={DISCOVERY_FILTER_NAMES.workMode}>
+              <Select value={filters.workMode} onValueChange={(v) => setFilter("workMode", v ?? "all")}>
+                <SelectTrigger id="filter-work-mode" className="w-full">
+                  <SelectValue labels={WORK_MODE_FILTER_LABELS} />
+                </SelectTrigger>
+                <SelectContent>
+                  {WORK_MODE_FILTER_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FilterField>
+            <FilterField id="filter-region" label={DISCOVERY_FILTER_NAMES.region}>
+              <Select value={filters.region} onValueChange={(v) => setFilter("region", v ?? "all")}>
+                <SelectTrigger id="filter-region" className="w-full">
+                  <SelectValue labels={REGION_FILTER_LABELS} />
+                </SelectTrigger>
+                <SelectContent>
+                  {REGION_FILTER_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FilterField>
+            <FilterField id="filter-organization" label={DISCOVERY_FILTER_NAMES.organization}>
+              <Select value={filters.organization} onValueChange={(v) => setFilter("organization", v ?? "all")}>
+                <SelectTrigger id="filter-organization" className="w-full">
+                  {/* Free-text org names get explicit children — titleCase would mangle
+                      "MLB Network" into "Mlb Network", so this is one of the two documented
+                      exceptions to the labels= pattern. */}
+                  <SelectValue>{(v: string) => (v === "all" ? "All teams / companies" : v)}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All teams / companies</SelectItem>
+                  {organizations.map((org) => (
+                    <SelectItem key={org} value={org}>
+                      {org}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FilterField>
+          </fieldset>
+
+          <fieldset className="space-y-3">
+            <legend className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Source &amp; state
+            </legend>
+            <FilterField id="filter-source" label={DISCOVERY_FILTER_NAMES.source}>
+              <Select value={filters.source} onValueChange={(v) => setFilter("source", v ?? "all")}>
+                <SelectTrigger id="filter-source" className="w-full">
+                  <SelectValue labels={sourceFilterLabels}>
+                    {(v: string) => (v === "all" ? "All platforms" : sourceFilterLabels[v] ?? v)}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All platforms</SelectItem>
+                  {sourceTypes.map((type) => (
+                    <SelectItem key={type} value={type}>
+                      {SOURCE_LABELS[type] ?? type}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FilterField>
+            <FilterField id="filter-status" label={DISCOVERY_FILTER_NAMES.status}>
+              <Select value={filters.status} onValueChange={(v) => setFilter("status", v ?? "active")}>
+                <SelectTrigger id="filter-status" className="w-full">
+                  <SelectValue labels={STATUS_LABELS} />
+                </SelectTrigger>
+                <SelectContent>
+                  {STATUSES.map((s) => (
+                    <SelectItem key={s.value} value={s.value}>
+                      {s.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FilterField>
+            <div className="flex items-center gap-1.5">
+              <Checkbox
+                id="hide-duplicates"
+                checked={filters.hideDuplicates === "true"}
+                onCheckedChange={(checked) => setFilter("hideDuplicates", checked === true ? "true" : "false")}
+              />
+              <Label htmlFor="hide-duplicates" className="text-xs font-medium text-muted-foreground">
+                Hide flagged duplicates
+              </Label>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Checkbox
+                id="show-dismissed"
+                checked={filters.showDismissed === "true"}
+                onCheckedChange={(checked) => setFilter("showDismissed", checked === true ? "true" : "false")}
+              />
+              <Label htmlFor="show-dismissed" className="text-xs font-medium text-muted-foreground">
+                Show dismissed
+              </Label>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Checkbox
+                id="exclude-in-pipeline"
+                checked={filters.excludeInPipeline === "true"}
+                onCheckedChange={(checked) => setFilter("excludeInPipeline", checked === true ? "true" : "false")}
+              />
+              <Label htmlFor="exclude-in-pipeline" className="text-xs font-medium text-muted-foreground">
+                Hide postings already in my pipeline
+              </Label>
+            </div>
+          </fieldset>
+        </div>
+      )}
+
+      <div className="mb-4 flex flex-wrap items-center gap-1.5">
+        {activeFilters
+          .filter(({ key }) => key !== "tab")
+          .map(({ key, value }) => (
             <Badge key={key} variant="secondary" className="gap-1 pr-1">
-              {FILTER_CHIP_LABELS[key]?.(value) ?? `${key}: ${value}`}
+              {chipLabel(key, value)}
               <button
                 type="button"
                 onClick={() => {
@@ -785,26 +1093,102 @@ export function Discovery() {
                   setSearchInput((prev) => (key === "search" ? "" : prev));
                   setFilter(key, FILTER_DEFAULTS[key as keyof typeof FILTER_DEFAULTS]);
                 }}
-                aria-label={`Clear ${key} filter`}
+                aria-label={`Clear filter: ${chipLabel(key, value)}`}
                 className="inline-flex rounded-full hover:bg-muted-foreground/20"
               >
                 <X className="h-3 w-3" />
               </button>
             </Badge>
           ))}
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => {
-              setLocationInput("");
-              setSearchInput("");
-              clearFilters();
-            }}
-          >
+        {activeFilters.filter((f) => f.key !== "tab").length > 0 && (
+          <Button size="sm" variant="ghost" onClick={clearAll}>
             Clear all
           </Button>
-        </div>
-      )}
+        )}
+
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>
+            <Bookmark className="h-3.5 w-3.5" />
+            Saved searches
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-64">
+            <DropdownMenuItem onClick={() => setSaveDialogOpen(true)}>Save current view…</DropdownMenuItem>
+            {savedSearches.length > 0 && <DropdownMenuSeparator />}
+            {savedSearches.map((saved) => (
+              <DropdownMenuItem
+                key={saved.id}
+                onClick={() => applySavedSearch(saved)}
+                className="justify-between gap-2"
+              >
+                <span className="flex items-center gap-1.5 truncate">
+                  {saved.isDefault && <Star className="h-3 w-3 shrink-0 fill-current text-amber-500" />}
+                  <span className="truncate">{saved.name}</span>
+                </span>
+                <span className="flex shrink-0 items-center gap-0.5">
+                  <button
+                    type="button"
+                    aria-label={saved.isDefault ? `Unset ${saved.name} as default` : `Set ${saved.name} as default`}
+                    title={saved.isDefault ? "Unset as default" : "Set as default"}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSearchDefault(saved);
+                    }}
+                    className="rounded p-1 hover:bg-muted-foreground/20"
+                  >
+                    <Star className={`h-3 w-3 ${saved.isDefault ? "fill-current text-amber-500" : ""}`} />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Delete ${saved.name}`}
+                    title="Delete"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteSavedSearch(saved);
+                    }}
+                    className="rounded p-1 hover:bg-muted-foreground/20"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                </span>
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
+      <Dialog open={saveDialogOpen} onOpenChange={setSaveDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Save current view</DialogTitle>
+            <DialogDescription>Saves every active filter on this page, so you can come back to it later.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label className="mb-1">Name</Label>
+              <Input
+                value={saveName}
+                onChange={(e) => setSaveName(e.target.value)}
+                placeholder="e.g. Strong baseball fits"
+              />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Checkbox
+                id="save-as-default"
+                checked={saveAsDefault}
+                onCheckedChange={(checked) => setSaveAsDefault(checked === true)}
+              />
+              <Label htmlFor="save-as-default" className="text-sm font-normal">
+                Open this view by default
+              </Label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={saveCurrentView} disabled={savingSearch}>
+              {savingSearch ? "Saving…" : "Save view"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {postings.length > 0 && (
         <div className="mb-3 flex items-center gap-2">
@@ -864,11 +1248,7 @@ export function Discovery() {
             icon={Search}
             title="No postings match your filters"
             description="Try loosening a filter or clear them all to see the full feed."
-            onClear={() => {
-              setLocationInput("");
-              setSearchInput("");
-              clearFilters();
-            }}
+            onClear={clearAll}
             variant="no-matches"
           />
         )

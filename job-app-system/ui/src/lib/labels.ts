@@ -110,26 +110,119 @@ export const REGION_FILTER_OPTIONS: { value: string; label: string }[] = [
   ...REGION_OPTIONS,
 ];
 
-// Discovery's top-level view tabs — a Baseball/MLB tab (isMlbTeam=true) plus 3 tabs for the
-// SimplifyJobs new-grad list's non-MLB sourceSection values (see newGradList.ts). Keys are short
-// and URL-friendly; values map to the isMlbTeam/sourceSection params Discovery.tsx sends to
-// GET /api/postings.
-export type DiscoveryTab = "baseball" | "ds-ai-ml" | "quant" | "pm";
+// Discovery's top-level view tabs — a Baseball/MLB tab (isMlbTeam=true), 3 tabs for the
+// SimplifyJobs new-grad list's non-MLB sourceSection values (see newGradList.ts), and "all"
+// (Everything — no isMlbTeam/sourceSection scoping at all, the 40-active-postings-unreachable-
+// through-any-tab gap the v8 plan measured). Keys are short and URL-friendly; values map to the
+// isMlbTeam/sourceSection params Discovery.tsx sends to GET /api/postings.
+export type DiscoveryTab = "all" | "baseball" | "ds-ai-ml" | "quant" | "pm";
 
 export const DISCOVERY_TAB_LABELS: Record<DiscoveryTab, string> = {
+  all: "Everything",
   baseball: "Baseball",
   "ds-ai-ml": "Data Science & AI/ML",
   quant: "Quantitative Finance",
   pm: "Product Management",
 };
 
-export const DISCOVERY_TAB_ORDER: DiscoveryTab[] = ["baseball", "ds-ai-ml", "quant", "pm"];
+// "all" is placed FIRST (the plan's explicit placement), but FILTER_DEFAULTS.tab in Discovery.tsx
+// deliberately stays "baseball" — adding this tab must not silently change the default landing
+// view.
+export const DISCOVERY_TAB_ORDER: DiscoveryTab[] = ["all", "baseball", "ds-ai-ml", "quant", "pm"];
 
-// The exact sourceSection string values the API expects/returns for the 3 non-baseball tabs.
-export const DISCOVERY_TAB_SOURCE_SECTIONS: Record<Exclude<DiscoveryTab, "baseball">, string> = {
+// The exact sourceSection string values the API expects/returns for the 3 non-baseball,
+// non-"all" tabs.
+export const DISCOVERY_TAB_SOURCE_SECTIONS: Record<Exclude<DiscoveryTab, "baseball" | "all">, string> = {
   "ds-ai-ml": "Data Science, AI & Machine Learning",
   quant: "Quantitative Finance",
   pm: "Product Management",
+};
+
+// Moved here from Discovery.tsx (was a local const there) as part of the label consolidation —
+// every Select-trigger label map now lives in one file, `optionsToLabels` doing the
+// options-array -> lookup-map conversion once instead of Discovery hand-rolling its own
+// `Object.fromEntries` per option list.
+export function optionsToLabels<V extends string>(options: { value: V; label: string }[]): Record<string, string> {
+  return Object.fromEntries(options.map((o) => [o.value, o.label]));
+}
+
+export const STATUSES: { value: "active" | "closed" | "all"; label: string }[] = [
+  { value: "active", label: "Active only" },
+  { value: "closed", label: "Closed only" },
+  { value: "all", label: "All statuses" },
+];
+export const STATUS_LABELS = optionsToLabels(STATUSES);
+
+export type DiscoverySortOption =
+  | "discoveredAt_desc"
+  | "discoveredAt_asc"
+  | "postedAt_desc"
+  | "postedAt_asc"
+  | "fit_desc";
+
+// postedAt sorts are relabeled "(where known)" rather than hidden — postedAt is null on ~90% of
+// active postings today, but hiding a sort based on today's data distribution would silently rot
+// as coverage improves; the parenthetical is honest about today's low coverage without removing
+// the option.
+export const SORTS: { value: DiscoverySortOption; label: string }[] = [
+  { value: "fit_desc", label: "Best fit first" },
+  { value: "discoveredAt_desc", label: "Newest found first" },
+  { value: "discoveredAt_asc", label: "Oldest found first" },
+  { value: "postedAt_desc", label: "Newest posted first (where known)" },
+  { value: "postedAt_asc", label: "Oldest posted first (where known)" },
+];
+export const SORT_LABELS = optionsToLabels(SORTS);
+// The Sort Select's onValueChange fallback and FILTER_DEFAULTS.sort must agree, or clearing the
+// value falls back to a different sort than the one the "default" filter chip/state claims —
+// both are "fit_desc" now (previously the fallback said discoveredAt_desc while the default said
+// fit_desc, a real disagreement).
+export const DEFAULT_SORT: DiscoverySortOption = "fit_desc";
+
+// Thresholds match api/src/fitScore.ts's fitTier boundaries exactly (Strong>=65, Good>=40,
+// Fair>=20, Weak<20) — the "or better" floor for each preset is that tier's own lower bound.
+export const MIN_FIT_OPTIONS: { value: string; label: string }[] = [
+  { value: "none", label: "Any fit" },
+  { value: "20", label: "Fair or better" },
+  { value: "40", label: "Good or better" },
+  { value: "65", label: "Strong only" },
+];
+export const MIN_FIT_LABELS = optionsToLabels(MIN_FIT_OPTIONS);
+
+// Recency filter driving the new `discoveredAfter` API param (discoveredAt is non-null on every
+// active posting, unlike postedAt) — values are day counts resolved to an absolute ISO timestamp
+// client-side at request time, not sent as a relative string.
+export const RECENCY_OPTIONS: { value: string; label: string }[] = [
+  { value: "any", label: "Any time" },
+  { value: "1", label: "Last 24 hours" },
+  { value: "7", label: "Last 7 days" },
+  { value: "30", label: "Last 30 days" },
+];
+export const RECENCY_LABELS = optionsToLabels(RECENCY_OPTIONS);
+
+// The one human-facing name map for Discovery's filter chips/aria-labels — "Type" -> "Role type"
+// (it means internship-vs-full-time, not a data type), "Location contains" -> "Location" (leaked
+// the implementation), "Search title/org" -> "Search" (inaccurate now that Phase 2 also searches
+// description), "Team / Company" -> "Team or company" (the chip renders it without spaces, so no
+// ambiguous spacing to get wrong twice).
+export const DISCOVERY_FILTER_NAMES: Record<string, string> = {
+  category: "Category",
+  seniority: "Level",
+  workMode: "Work mode",
+  region: "Region",
+  isInternship: "Role type",
+  location: "Location",
+  search: "Search",
+  organization: "Team or company",
+  source: "ATS platform",
+  status: "Status",
+  sort: "Sort",
+  minFit: "Minimum fit",
+  discoveredAfter: "Discovered",
+  excludeInPipeline: "Hide already-in-pipeline",
+  matchedSkill: "Matched skill",
+  hideDuplicates: "Hide flagged duplicates",
+  showDismissed: "Show dismissed",
+  pageSize: "Rows per page",
 };
 
 // Moved from Pipeline.tsx so every page renders ApplicationStage/source labels the same way.
@@ -150,7 +243,14 @@ export const SOURCE_LABELS: Record<string, string> = {
   adp: "ADP",
   ukg: "UKG",
   bamboohr: "BambooHR",
-  aaimtrack: "aaimtrack",
+  // Searched for an official capitalization in the codebase and in scrapers/src/adapters/
+  // aaimtrack.ts's own comments first — every mention is lowercase because it's always written
+  // as part of the bare domain (aaimtrack.com), never as a standalone product name. No canonical
+  // brand casing found, so this uses "AAIMtrack" (matching the sentence-case-with-an-internal-
+  // capital convention the platform's own site header uses) as a reasonable default rather than
+  // leaving it as the all-lowercase domain-fragment string, which read as unstyled/broken next to
+  // "Greenhouse"/"BambooHR" on the same badge.
+  aaimtrack: "AAIMtrack",
   teamworkonline: "TeamWork Online",
   dayforce: "Dayforce",
   team_page: "Team page",

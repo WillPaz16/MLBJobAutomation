@@ -91,5 +91,29 @@ export function useFilterParams<T extends FilterDefaults>(defaults: T) {
     [setSearchParams]
   );
 
-  return { filters, setFilter, page, setPage, activeFilters, clearFilters, clearFilter, searchParams };
+  // Replaces the ENTIRE filter set in one commit (used by "apply a saved search") — unlike
+  // setFilter, which changes one key at a time. A saved search's query string can set multiple
+  // filters at once, and doing that via N sequential setFilter calls would fire N renders/loads
+  // instead of one, plus each call only diffs against the PREVIOUS single-key change rather than
+  // the saved view as a whole. Also resets to page 1, same as setFilter.
+  const applyQueryString = useCallback(
+    (query: string) => {
+      const next = new URLSearchParams(query);
+      next.delete("page");
+      setSearchParams(next);
+    },
+    [setSearchParams]
+  );
+
+  return {
+    filters,
+    setFilter,
+    page,
+    setPage,
+    activeFilters,
+    clearFilters,
+    clearFilter,
+    applyQueryString,
+    searchParams,
+  };
 }

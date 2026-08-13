@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import request from "supertest";
 import { createApp } from "../src/index.js";
-import { createPosting, createSource } from "./helpers.js";
+import { createApplication, createPosting, createSource } from "./helpers.js";
 
 const app = createApp();
 
@@ -271,6 +271,72 @@ describe("GET /api/postings", () => {
     expect(res.body[0].title).toBe("Cubs role");
   });
 
+  it("tokenized search matches out-of-order terms ('data scientist' matches 'Scientist, Data')", async () => {
+    await createPosting({ title: "Scientist, Data", organization: "Cubs" });
+    await createPosting({ title: "Ticket Sales Rep", organization: "Cubs" });
+    const res = await request(app).get(`/api/postings?q=${encodeURIComponent("data scientist")}`);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].title).toBe("Scientist, Data");
+  });
+
+  it("tokenized search matches a term that only appears in the description", async () => {
+    await createPosting({ title: "Analyst", description: "Deep experience with plotly required" });
+    await createPosting({ title: "Other Analyst", description: "unrelated" });
+    const res = await request(app).get("/api/postings?q=plotly");
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].title).toBe("Analyst");
+  });
+
+  it("a leading '-' negates a search term", async () => {
+    await createPosting({ title: "Baseball Analyst" });
+    await createPosting({ title: "Baseball Analyst Intern" });
+    const res = await request(app).get(`/api/postings?q=${encodeURIComponent("analyst -intern")}`);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].title).toBe("Baseball Analyst");
+  });
+
+  it("a quoted phrase stays a single term instead of being split on whitespace", async () => {
+    await createPosting({ title: "Baseball R&D Analyst" });
+    await createPosting({ title: "Baseball Analyst, Research Coordinator" });
+    const res = await request(app).get(`/api/postings?q=${encodeURIComponent('"R&D Analyst"')}`);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].title).toBe("Baseball R&D Analyst");
+  });
+
+  it("discoveredAfter filters to postings discovered on/after the given date", async () => {
+    await createPosting({ title: "Old", discoveredAt: new Date("2026-01-01T00:00:00Z") });
+    await createPosting({ title: "New", discoveredAt: new Date("2026-06-01T00:00:00Z") });
+    const res = await request(app).get("/api/postings?discoveredAfter=2026-03-01T00:00:00.000Z");
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].title).toBe("New");
+  });
+
+  it("discoveredAfter rejects a malformed date with 400, not 500", async () => {
+    const res = await request(app).get("/api/postings?discoveredAfter=not-a-date");
+    expect(res.status).toBe(400);
+  });
+
+  it("excludeInPipeline=true excludes postings that already have an application", async () => {
+    const withApp = await createPosting({ title: "Already applied" });
+    await createApplication(withApp.id);
+    await createPosting({ title: "Not yet applied" });
+
+    const res = await request(app).get("/api/postings?excludeInPipeline=true");
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].title).toBe("Not yet applied");
+  });
+
+  it("nulls sort last under BOTH postedAt_asc and postedAt_desc", async () => {
+    await createPosting({ title: "Dated", postedAt: new Date("2026-01-01") });
+    await createPosting({ title: "No date", postedAt: null });
+
+    const asc = await request(app).get("/api/postings?sort=postedAt_asc");
+    expect(asc.body.map((p: { title: string }) => p.title)).toEqual(["Dated", "No date"]);
+
+    const desc = await request(app).get("/api/postings?sort=postedAt_desc");
+    expect(desc.body.map((p: { title: string }) => p.title)).toEqual(["Dated", "No date"]);
+  });
+
   it("excludes dismissed postings by default", async () => {
     await createPosting({ title: "Kept" });
     await createPosting({ title: "Dismissed", dismissedAt: new Date() });
@@ -386,6 +452,27 @@ describe("GET /api/postings fit scoring", () => {
     expect(partial.fitScore).not.toBe(partial.fitScoreRaw);
   });
 
+  it("matchedSkill narrows the list while leaving surviving rows' fitScore byte-identical", async () => {
+    await request(app).put("/api/profile").send({ skills: "python, sql, r" });
+    await createPosting({ title: "Python Only Role", description: "python" });
+    await createPosting({ title: "Python And SQL Role", description: "python sql" });
+    await createPosting({ title: "No Match Role", description: "unrelated" });
+
+    const unfiltered = await request(app).get("/api/postings");
+    const unfilteredByTitle: Record<string, number> = {};
+    for (const p of unfiltered.body) unfilteredByTitle[p.title] = p.fitScore;
+
+    const res = await request(app).get("/api/postings?matchedSkill=sql");
+    expect(res.status).toBe(200);
+    const titles = res.body.map((p: { title: string }) => p.title).sort();
+    expect(titles).toEqual(["Python And SQL Role"]);
+    // The critical assertion: narrowing to one skill must not re-rank/re-normalize the surviving
+    // row — its fitScore is pinned to exactly what it was in the unfiltered (full-cohort) response.
+    for (const p of res.body) {
+      expect(p.fitScore).toBe(unfilteredByTitle[p.title]);
+    }
+  });
+
   it("normalizes fitScore per-tab: the same raw-scoring posting ranks differently depending on which cohort (isMlbTeam tab) it's compared against", async () => {
     await request(app).put("/api/profile").send({ skills: "python, sql, r" });
 
@@ -485,6 +572,30 @@ describe("GET /api/postings/facets", () => {
       "Quantitative Finance": 1,
       "Product Management": 1,
     });
+  });
+
+  it("returns allActiveCount as the unscoped active+undismissed total", async () => {
+    await createPosting({ title: "Active 1" });
+    await createPosting({ title: "Active 2" });
+    await createPosting({ title: "Closed", closedAt: new Date() });
+    await createPosting({ title: "Dismissed", dismissedAt: new Date() });
+
+    const res = await request(app).get("/api/postings/facets");
+    expect(res.status).toBe(200);
+    expect(res.body.allActiveCount).toBe(2);
+  });
+
+  it("returns sourceTypes as the distinct ATS types in use by an active, undismissed posting", async () => {
+    const greenhouse = await createSource("gh-facets", "greenhouse");
+    const lever = await createSource("lever-facets", "lever");
+    const closedOnlySource = await createSource("closed-facets", "workday");
+    await createPosting({ sourceId: greenhouse.id, title: "GH role" });
+    await createPosting({ sourceId: lever.id, title: "Lever role" });
+    await createPosting({ sourceId: closedOnlySource.id, title: "Closed workday role", closedAt: new Date() });
+
+    const res = await request(app).get("/api/postings/facets");
+    expect(res.status).toBe(200);
+    expect(res.body.sourceTypes.sort()).toEqual(["greenhouse", "lever"]);
   });
 });
 

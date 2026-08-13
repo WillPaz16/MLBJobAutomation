@@ -163,6 +163,16 @@ model OrgProfile {
   preferredTone    TonePreset? @relation(fields: [preferredToneId], references: [id])
 }
 
+// Mirrored from api/prisma/schema.prisma (dual-sync convention) — scrapers never writes to this
+// table, but it shares the same jobs.db file so the client here needs the model to exist.
+model SavedSearch {
+  id        String   @id @default(cuid())
+  name      String
+  query     String
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
 model NotificationLog {
   id        String   @id @default(cuid())
   summary   String

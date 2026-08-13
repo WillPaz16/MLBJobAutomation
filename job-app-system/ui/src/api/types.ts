@@ -214,6 +214,14 @@ export interface ProfileCoverage {
   };
 }
 
+export interface SavedSearch {
+  id: string;
+  name: string;
+  query: string;
+  isDefault: boolean;
+  createdAt: string;
+}
+
 // Reuses the exact shape `update`'s PUT body already accepts, per CLAUDE.md/plan convention of
 // not inventing a second type for the same draft-profile payload.
 export type CandidateProfileInput = {

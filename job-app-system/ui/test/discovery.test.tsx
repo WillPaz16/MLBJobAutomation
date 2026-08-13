@@ -22,12 +22,21 @@ vi.mock("../src/api/client", () => ({
           "Quantitative Finance": 18,
           "Product Management": 6,
         },
+        allActiveCount: 400,
+        sourceTypes: ["greenhouse", "lever"],
       }),
       update: (...args: unknown[]) => updateMock(...args),
       createManual: vi.fn(),
     },
     applications: { remove: vi.fn() },
     notifications: { list: vi.fn().mockResolvedValue([]) },
+    profile: { get: vi.fn().mockResolvedValue(null) },
+    savedSearches: {
+      list: vi.fn().mockResolvedValue([]),
+      create: vi.fn(),
+      update: vi.fn(),
+      remove: vi.fn(),
+    },
   },
 }));
 
@@ -54,7 +63,9 @@ describe("Discovery URL-driven filters", () => {
 
     await waitFor(() => expect(listMock).toHaveBeenCalledTimes(1));
 
-    const locationInput = screen.getByLabelText(/Location contains/i);
+    // Location now lives in Row B ("More filters"), collapsed by default — open it first.
+    fireEvent.click(screen.getByRole("button", { name: /More filters/i }));
+    const locationInput = screen.getByLabelText(/^Location$/i);
     fireEvent.change(locationInput, { target: { value: "Chicago" } });
 
     // Debounce is 300ms — wait past it for the URL write + resulting single fetch.
@@ -70,7 +81,7 @@ describe("Discovery URL-driven filters", () => {
     renderDiscovery(["/discovery"]);
     await waitFor(() => expect(listMock).toHaveBeenCalledTimes(1));
 
-    const searchInput = screen.getByLabelText(/Search title\/org/i);
+    const searchInput = screen.getByLabelText(/^Search$/i);
     fireEvent.change(searchInput, { target: { value: "analytics" } });
 
     await waitFor(() => expect(capturedSearch).toContain("search=analytics"), { timeout: 1000 });
@@ -82,7 +93,8 @@ describe("Discovery URL-driven filters", () => {
     await waitFor(() => expect(listMock).toHaveBeenCalledTimes(1));
     expect(capturedSearch).toContain("page=3");
 
-    const locationInput = screen.getByLabelText(/Location contains/i);
+    fireEvent.click(screen.getByRole("button", { name: /More filters/i }));
+    const locationInput = screen.getByLabelText(/^Location$/i);
     fireEvent.change(locationInput, { target: { value: "Remote" } });
 
     await waitFor(() => expect(capturedSearch).not.toContain("page="), { timeout: 1000 });

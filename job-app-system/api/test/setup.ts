@@ -47,6 +47,7 @@ afterEach(async () => {
   await prisma.orgProfile.deleteMany();
   await prisma.tonePreset.deleteMany();
   await prisma.candidateProfile.deleteMany();
+  await prisma.savedSearch.deleteMany();
 });
 
 afterAll(async () => {

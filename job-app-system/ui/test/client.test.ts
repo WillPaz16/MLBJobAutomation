@@ -22,7 +22,7 @@ describe("api client", () => {
   it("returns parsed postings plus the total count from the X-Total-Count header", async () => {
     vi.stubGlobal("fetch", mockFetch({ ok: true, jsonBody: [{ id: "1" }], totalCount: "42" }));
     const result = await api.postings.list();
-    expect(result).toEqual({ postings: [{ id: "1" }], total: 42 });
+    expect(result).toEqual({ postings: [{ id: "1" }], total: 42, fitCohortSize: null });
   });
 
   it("falls back to the returned page length when X-Total-Count is missing", async () => {

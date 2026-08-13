@@ -74,6 +74,19 @@ export const paginationSchema = z.object({
   skip: z.coerce.number().int().nonnegative().optional(),
 });
 
+// Validates the one query param on GET /api/postings that can actually be malformed in a way
+// that should 400 rather than 500 or silently no-op: discoveredAfter is parsed into a real `Date`
+// for a Prisma `gte` filter, so a garbage string (or a param that just isn't a valid date) needs
+// to fail loudly here, before it ever reaches Prisma. Every other postings query param is either
+// a free-text string (always valid) or a "true"/"false" string-coercion boolean (never throws) —
+// see postings.ts's inline comments for why those don't need zod entries of their own.
+export const postingsDiscoveredAfterSchema = z.object({
+  discoveredAfter: z
+    .string()
+    .refine((v) => !Number.isNaN(Date.parse(v)), { message: "discoveredAfter must be a valid date" })
+    .optional(),
+});
+
 export const createManualPostingSchema = z.object({
   title: z.string().min(1),
   organization: z.string().min(1),
@@ -121,6 +134,14 @@ export const analyticsQuerySchema = z.object({
 export const timeseriesQuerySchema = z.object({
   weeks: z.coerce.number().int().positive().max(104).optional(),
 });
+
+export const createSavedSearchSchema = z.object({
+  name: z.string().min(1),
+  query: z.string(), // URLSearchParams-formatted string; empty string is valid (an all-defaults view)
+  isDefault: z.boolean().optional(),
+});
+
+export const updateSavedSearchSchema = createSavedSearchSchema.partial();
 
 export const putCandidateProfileSchema = z.object({
   skills: z.string().min(1),

@@ -40,7 +40,16 @@ vi.mock("../src/api/client", () => ({
         regions: [],
         mlbTeamCounts: { true: 0, false: 0 },
         sourceSectionCounts: {},
+        allActiveCount: 0,
+        sourceTypes: [],
       }),
+    },
+    profile: { get: vi.fn().mockResolvedValue(null) },
+    savedSearches: {
+      list: vi.fn().mockResolvedValue([]),
+      create: vi.fn(),
+      update: vi.fn(),
+      remove: vi.fn(),
     },
     applications: { list: vi.fn().mockResolvedValue([]), update: vi.fn() },
     documents: {
