@@ -4,19 +4,28 @@ import { prisma } from "../db.js";
 import { asyncHandler, HttpError } from "../asyncHandler.js";
 import {
   createManualPostingSchema,
-  paginationSchema,
+  postingsPaginationSchema,
   postingsDiscoveredAfterSchema,
   updatePostingSchema,
 } from "../validation.js";
 import { computeFitScore, fitTier } from "../fitScore.js";
+import { getCachedRawFitScore, invalidatePostingFitScoreCache } from "../fitScoreCache.js";
 
 export const postingsRouter = Router();
 
 // posting rows carry more fields than FitScorePosting needs — this keeps computeFitScore's
 // signature narrow/pure while still accepting the richer Prisma result shape.
-function withRawFitScore<T extends { title: string; organization: string; category: string; location: string | null; description: string | null }>(
+//
+// Routed through fitScoreCache.ts's per-posting-id cache instead of calling computeFitScore
+// directly: a raw score only depends on the posting's own title/description/category/location
+// and the profile's skills, so it's safe to reuse across requests as long as the profile hasn't
+// changed since (`profile.updatedAt` is the cache key's other half — see fitScoreCache.ts).
+function withRawFitScore<
+  T extends { id: string; title: string; organization: string; category: string; location: string | null; description: string | null }
+>(
   posting: T,
   profile: {
+    updatedAt: Date;
     skills: string;
     coreSkills: string | null;
     preferredCategories: string | null;
@@ -25,7 +34,7 @@ function withRawFitScore<T extends { title: string; organization: string; catego
   } | null
 ): T & { fitScoreRaw?: number; fitTier?: string; matchedSkills?: string[]; reasons?: unknown[]; evidence?: unknown[] } {
   if (!profile) return posting;
-  const { score, tier, matchedSkills, reasons, evidence } = computeFitScore(posting, profile);
+  const { score, tier, matchedSkills, reasons, evidence } = getCachedRawFitScore(posting, profile, profile.updatedAt.toISOString());
   return { ...posting, fitScoreRaw: score, fitTier: tier, matchedSkills, reasons, evidence };
 }
 
@@ -140,7 +149,7 @@ postingsRouter.get(
       excludeInPipeline,
       matchedSkill,
     } = req.query;
-    const { take, skip } = paginationSchema.parse(req.query);
+    const { take, skip } = postingsPaginationSchema.parse(req.query);
     // Validated separately from pagination above: this is the one param here that gets parsed
     // into a real `Date` for a Prisma filter, so a garbage value needs to 400, not 500 (a bad
     // `Date` silently becomes `Invalid Date`, which Prisma would otherwise pass straight through).
@@ -469,6 +478,13 @@ postingsRouter.patch(
       .catch(() => {
         throw new HttpError(404, "Posting not found");
       });
+    // Invalidate this posting's cached raw fit score whenever a field computeFitScore actually
+    // reads (title/description/category) is part of the update — otherwise a stale score could
+    // be served after an edit until the profile itself happens to change. dismissedAt/other
+    // fields don't affect scoring, so they don't need to trigger this.
+    if ("title" in rest || "description" in rest || "category" in rest) {
+      invalidatePostingFitScoreCache(posting.id);
+    }
     res.json(posting);
   })
 );

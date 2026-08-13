@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi, afterEach } from "vitest";
 import request from "supertest";
 import { createApp } from "../src/index.js";
 import { createApplication, createPosting, createSource } from "./helpers.js";
+import * as fitScoreModule from "../src/fitScore.js";
 
 const app = createApp();
 
@@ -507,6 +508,77 @@ describe("GET /api/postings fit scoring", () => {
     // ...but a different normalized fitScore, because each was ranked against its own tab's cohort.
     expect(baseballScored.fitScore).not.toBe(nonBaseballScored.fitScore);
     expect(baseballScored.fitScore).toBeGreaterThan(nonBaseballScored.fitScore);
+  });
+});
+
+describe("GET /api/postings raw-fit-score cache", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("skips recomputing computeFitScore for a posting on a second request against an unchanged profile", async () => {
+    await request(app).put("/api/profile").send({ skills: "python, sql" });
+    await createPosting({ title: "Python Data Scientist", description: "Uses Python and SQL daily" });
+    await createPosting({ title: "Another Role", description: "Something else entirely" });
+
+    const spy = vi.spyOn(fitScoreModule, "computeFitScore");
+
+    const first = await request(app).get("/api/postings");
+    expect(first.status).toBe(200);
+    expect(spy).toHaveBeenCalledTimes(2); // one call per posting, cache cold
+
+    spy.mockClear();
+
+    const second = await request(app).get("/api/postings");
+    expect(second.status).toBe(200);
+    // Cache is warm and the profile hasn't changed — no posting should be rescored.
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("recomputes for a posting whose title/description changed via PATCH, invalidating just that entry", async () => {
+    await request(app).put("/api/profile").send({ skills: "python, sql" });
+    const posting = await createPosting({ title: "Generic Role", description: "no relevant terms here" });
+
+    const before = await request(app).get(`/api/postings/${posting.id}`);
+    expect(before.status).toBe(200);
+    const scoreBefore = before.body.fitScoreRaw;
+
+    await request(app)
+      .patch(`/api/postings/${posting.id}`)
+      .send({ description: "python sql python sql python sql expert" });
+
+    const after = await request(app).get(`/api/postings/${posting.id}`);
+    expect(after.status).toBe(200);
+    expect(after.body.fitScoreRaw).not.toBe(scoreBefore);
+  });
+
+  it("a PATCH to unrelated fields (dismissedAt) does not need to invalidate the cache", async () => {
+    await request(app).put("/api/profile").send({ skills: "python, sql" });
+    const posting = await createPosting({ title: "Generic Role", description: "python sql" });
+
+    const before = await request(app).get(`/api/postings/${posting.id}`);
+    const scoreBefore = before.body.fitScoreRaw;
+
+    await request(app).patch(`/api/postings/${posting.id}`).send({ dismissedAt: new Date().toISOString() });
+
+    const after = await request(app).get(`/api/postings/${posting.id}?_ignored=1`);
+    // Fetch via the list endpoint (with showDismissed) since the posting is now dismissed.
+    const list = await request(app).get("/api/postings?showDismissed=true");
+    const found = list.body.find((p: { id: string }) => p.id === posting.id);
+    expect(found.fitScoreRaw).toBe(scoreBefore);
+    void after;
+  });
+});
+
+describe("GET /api/postings response-size bound", () => {
+  it("an omitted take defaults to a bounded page instead of returning the entire cohort", async () => {
+    for (let i = 0; i < 105; i++) {
+      await createPosting({ title: `Bulk role ${i}` });
+    }
+    const res = await request(app).get("/api/postings");
+    expect(res.status).toBe(200);
+    expect(res.body.length).toBeLessThanOrEqual(100);
+    expect(res.headers["x-total-count"]).toBe("105"); // full count still reported via header
   });
 });
 

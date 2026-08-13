@@ -83,8 +83,27 @@ export const registerDocumentSchema = z.object({
   attachAs: z.enum(["resume", "cover"]).optional(),
 });
 
+// Shared by documents.ts and applications.ts, both of which have UI call sites that
+// deliberately omit `take` and rely on getting the full list back (Pipeline's Kanban board,
+// Documents' list page, Prep's REVIEWING-application scan all call `.list()` with no `take`) —
+// so this base schema stays unbounded-by-default. GET /api/postings gets its own
+// `postingsPaginationSchema` below instead of a shared default, specifically because its cohort
+// just tripled in size and its response body was measured at up to 13MB with an omitted `take`;
+// bounding this shared schema instead would have silently truncated Pipeline/Documents/Prep.
 export const paginationSchema = z.object({
   take: z.coerce.number().int().positive().max(500).optional(),
+  skip: z.coerce.number().int().nonnegative().optional(),
+});
+
+// GET /api/postings-only: defaults `take` to 100 so an omitted `take` can't return an entire
+// 1,800+-row cohort as a multi-MB JSON body (confirmed live this session). This only bounds the
+// RESPONSE — postings.ts's internal full-cohort fetch used for percentile-ranking does not read
+// `take`/`skip` at all (it fetches the whole matching cohort unconditionally, then slices for the
+// response afterward), so this default doesn't touch that computation. The only UI call site
+// (ui/src/pages/Discovery.tsx) already always passes an explicit `take`, so this only changes
+// behavior for direct/curl callers that omit it.
+export const postingsPaginationSchema = z.object({
+  take: z.coerce.number().int().positive().max(500).default(100),
   skip: z.coerce.number().int().nonnegative().optional(),
 });
 
