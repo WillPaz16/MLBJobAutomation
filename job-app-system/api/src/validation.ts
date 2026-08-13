@@ -150,3 +150,84 @@ export const putCandidateProfileSchema = z.object({
   locationKeywords: z.string().optional(),
   excludeKeywords: z.string().optional(),
 });
+
+// ApplicantIdentity PUT — every field optional/nullable, mirroring the model itself (every column
+// is nullable there since a partially-filled identity is normal). Deliberately NOT shared with any
+// scoring endpoint (unlike putCandidateProfileSchema) — see identity.ts / schema.prisma comments.
+// dateOfBirth (and EducationEntry's start/endDate below) are validated as "YYYY-MM-DD"-shaped
+// strings, not z.string().datetime() — they're plain date strings, never DateTime, specifically to
+// avoid Prisma+SQLite's UTC-shift round-trip bug.
+const dateStringSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}(-\d{2})?$/, "expected YYYY-MM-DD or YYYY-MM")
+  .nullable();
+
+export const putApplicantIdentitySchema = z.object({
+  legalFirstName: z.string().nullable().optional(),
+  legalMiddleName: z.string().nullable().optional(),
+  legalLastName: z.string().nullable().optional(),
+  preferredName: z.string().nullable().optional(),
+
+  email: z.string().email().nullable().optional(),
+  phone: z.string().nullable().optional(),
+
+  addressStreet: z.string().nullable().optional(),
+  addressCity: z.string().nullable().optional(),
+  addressState: z.string().nullable().optional(),
+  addressZip: z.string().nullable().optional(),
+  addressCountry: z.string().nullable().optional(),
+
+  dateOfBirth: dateStringSchema.optional(),
+
+  requiresSponsorship: z.boolean().nullable().optional(),
+  authorizedToWorkUs: z.boolean().nullable().optional(),
+
+  genderIdentityCode: z.string().nullable().optional(),
+  genderIdentityLabel: z.string().nullable().optional(),
+  raceEthnicityCode: z.string().nullable().optional(),
+  raceEthnicityLabel: z.string().nullable().optional(),
+  disabilityStatusCode: z.string().nullable().optional(),
+  disabilityStatusLabel: z.string().nullable().optional(),
+  veteranStatusCode: z.string().nullable().optional(),
+  veteranStatusLabel: z.string().nullable().optional(),
+
+  linkedinUrl: z.string().nullable().optional(),
+  portfolioUrl: z.string().nullable().optional(),
+  githubUrl: z.string().nullable().optional(),
+  otherUrl: z.string().nullable().optional(),
+});
+
+export const createEducationEntrySchema = z.object({
+  school: z.string().nullable().optional(),
+  degree: z.string().nullable().optional(),
+  fieldOfStudy: z.string().nullable().optional(),
+  startDate: dateStringSchema.optional(),
+  endDate: dateStringSchema.optional(),
+  gpa: z.string().nullable().optional(),
+  isPrimary: z.boolean().optional(),
+});
+
+export const updateEducationEntrySchema = createEducationEntrySchema.partial();
+
+export const createAnswerSnippetSchema = z.object({
+  category: z.string().min(1),
+  question: z.string().min(1),
+  template: z.string().min(1),
+  tags: z.string().optional(),
+  isActive: z.boolean().optional(),
+});
+
+export const updateAnswerSnippetSchema = createAnswerSnippetSchema.partial();
+
+export const createAnswerOverrideSchema = z.object({
+  applicationId: z.string().min(1),
+  questionKey: z.string().min(1),
+  answer: z.string().min(1),
+  snippetId: z.string().nullable().optional(),
+});
+
+export const updateAnswerOverrideSchema = z.object({
+  questionKey: z.string().min(1).optional(),
+  answer: z.string().min(1).optional(),
+  snippetId: z.string().nullable().optional(),
+});

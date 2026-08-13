@@ -11,6 +11,8 @@ import { tonePresetsRouter } from "./routes/tonePresets.js";
 import { orgProfilesRouter } from "./routes/orgProfiles.js";
 import { profileRouter } from "./routes/profile.js";
 import { savedSearchesRouter } from "./routes/savedSearches.js";
+import { identityRouter } from "./routes/identity.js";
+import { answersRouter } from "./routes/answers.js";
 import { HttpError, asyncHandler } from "./asyncHandler.js";
 import { runDailyDiscovery, startScheduler } from "./scheduler.js";
 
@@ -47,6 +49,8 @@ export function createApp() {
   app.use("/api/org-profiles", orgProfilesRouter);
   app.use("/api/profile", profileRouter);
   app.use("/api/saved-searches", savedSearchesRouter);
+  app.use("/api/identity", identityRouter);
+  app.use("/api/answers", answersRouter);
 
   app.get("/api/health", (_req, res) => res.json({ ok: true }));
 

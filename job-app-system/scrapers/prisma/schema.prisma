@@ -191,3 +191,92 @@ model CandidateProfile {
   excludeKeywords     String?  // comma-separated, dealbreaker penalty
   updatedAt           DateTime @updatedAt
 }
+
+// Mirrored from api/prisma/schema.prisma (dual-sync convention) — scrapers never writes to any
+// of these tables, but they share the same jobs.db file so the client here needs the models to
+// exist. See api/prisma/schema.prisma for the full doc comments (singleton-vs-CandidateProfile
+// rationale, EEO code+label rationale, dateOfBirth-as-String rationale, the "never add ssn"
+// warning, isPrimary exclusivity, and the AnswerSnippet/AnswerOverride templating design).
+model ApplicantIdentity {
+  id             String @id @default("identity")
+
+  legalFirstName String?
+  legalMiddleName String?
+  legalLastName  String?
+  preferredName  String?
+
+  email          String?
+  phone          String?
+
+  addressStreet  String?
+  addressCity    String?
+  addressState   String?
+  addressZip     String?
+  addressCountry String?
+
+  dateOfBirth    String?
+
+  requiresSponsorship Boolean?
+  authorizedToWorkUs  Boolean?
+
+  genderIdentityCode      String?
+  genderIdentityLabel     String?
+  raceEthnicityCode       String?
+  raceEthnicityLabel      String?
+  disabilityStatusCode    String?
+  disabilityStatusLabel   String?
+  veteranStatusCode       String?
+  veteranStatusLabel      String?
+
+  linkedinUrl    String?
+  portfolioUrl   String?
+  githubUrl      String?
+  otherUrl       String?
+
+  updatedAt      DateTime @updatedAt
+
+  education      EducationEntry[]
+}
+
+model EducationEntry {
+  id                  String            @id @default(cuid())
+  applicantIdentityId String
+  applicantIdentity   ApplicantIdentity @relation(fields: [applicantIdentityId], references: [id], onDelete: Cascade)
+
+  school       String?
+  degree       String?
+  fieldOfStudy String?
+  startDate    String?
+  endDate      String?
+  gpa          String?
+  isPrimary    Boolean @default(false)
+
+  @@index([applicantIdentityId])
+}
+
+model AnswerSnippet {
+  id        String   @id @default(cuid())
+  category  String
+  question  String
+  template  String
+  tags      String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  overrides AnswerOverride[]
+}
+
+model AnswerOverride {
+  id            String         @id @default(cuid())
+  applicationId String
+  questionKey   String
+  answer        String
+  snippetId     String?
+  snippet       AnswerSnippet? @relation(fields: [snippetId], references: [id], onDelete: SetNull)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@unique([applicationId, questionKey])
+  @@index([applicationId])
+}

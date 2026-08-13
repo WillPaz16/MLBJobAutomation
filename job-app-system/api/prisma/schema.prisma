@@ -206,3 +206,132 @@ model CandidateProfile {
   excludeKeywords     String?  // comma-separated, dealbreaker penalty
   updatedAt           DateTime @updatedAt
 }
+
+// Singleton, real-PII identity used to prefill/apply-assist (v8 Phase 4). Deliberately a SIBLING
+// of CandidateProfile, NOT an extension of it: CandidateProfile is a scoring object whose schema
+// (putCandidateProfileSchema) is shared verbatim by PUT /api/profile AND
+// POST /api/profile/coverage/preview — adding identity fields there would post the user's DOB to
+// a scoring endpoint on every keystroke of Compatibility's live preview. Every field here is
+// nullable: a partially-filled identity is the normal state, not an error state.
+//
+// dateOfBirth is a plain String ("YYYY-MM-DD"), never DateTime — Prisma+SQLite stores DateTime
+// UTC-shifted, so "1999-03-14" would round-trip as "1999-03-13T19:00:00Z" in US timezones (an
+// off-by-one birthday bug). No time component is needed and no date arithmetic ever happens on
+// this field, so a plain string sidesteps the bug entirely. Same reasoning as Posting.salary
+// being raw text instead of a parsed number.
+//
+// requiresSponsorship/authorizedToWorkUs are nullable Booleans, not booleans-with-a-default: null
+// means "declined to answer", a genuinely different state from `false` that must never be
+// silently coerced to false by any autofill/apply-assist consumer.
+//
+// EEO fields are stored as CODE + LABEL pairs (e.g. genderIdentityCode/genderIdentityLabel). The
+// code drives a <Select>/option-matching logic; the label exists because the federal CC-305
+// disability self-identification form has legally specific wording that differs from
+// Greenhouse's own EEO dropdown wording, which differs again from Workday's — code alone would
+// force a future autofill helper to guess at exact wording, label alone would allow no reliable
+// option-matching.
+//
+// NEVER add an `ssn` field here, or any other government-ID number. If you're reading this
+// because a future task seems to call for one: it doesn't. Social Security numbers are never
+// stored by this system, full stop.
+model ApplicantIdentity {
+  id             String @id @default("identity")
+
+  legalFirstName String?
+  legalMiddleName String?
+  legalLastName  String?
+  preferredName  String?
+
+  email          String?
+  phone          String?
+
+  addressStreet  String?
+  addressCity    String?
+  addressState   String?
+  addressZip     String?
+  addressCountry String?
+
+  dateOfBirth    String? // "YYYY-MM-DD" — see model comment above, never DateTime
+
+  requiresSponsorship Boolean? // null = declined to answer; never treat as false
+  authorizedToWorkUs  Boolean? // null = declined to answer; never treat as false
+
+  // EEO self-identification — code + label, both, per the model comment above.
+  genderIdentityCode      String?
+  genderIdentityLabel     String?
+  raceEthnicityCode       String?
+  raceEthnicityLabel      String?
+  disabilityStatusCode    String?
+  disabilityStatusLabel   String?
+  veteranStatusCode       String?
+  veteranStatusLabel      String?
+
+  linkedinUrl    String?
+  portfolioUrl   String?
+  githubUrl      String?
+  otherUrl       String?
+
+  updatedAt      DateTime @updatedAt
+
+  education      EducationEntry[]
+}
+
+// Multiple degrees are a real fact and ATS education sections repeat, so this is its own related
+// model rather than embedded fields on ApplicantIdentity. isPrimary exclusivity (at most one
+// EducationEntry per identity with isPrimary: true) is enforced in a transaction at the route
+// layer — same "re-sequence all affected rows in one transaction" discipline CLAUDE.md documents
+// for Application.order in Pipeline.tsx.
+model EducationEntry {
+  id                  String            @id @default(cuid())
+  applicantIdentityId String
+  applicantIdentity   ApplicantIdentity @relation(fields: [applicantIdentityId], references: [id], onDelete: Cascade)
+
+  school       String?
+  degree       String?
+  fieldOfStudy String?
+  startDate    String? // "YYYY-MM-DD" or "YYYY-MM" — String, same DateTime-avoidance reasoning as dateOfBirth above
+  endDate      String?
+  gpa          String?
+  isPrimary    Boolean @default(false)
+
+  @@index([applicantIdentityId])
+}
+
+// Reusable answers to recurring free-text application questions ("why do you want to work
+// here", "describe a time you..."). `category` is a loose free-text tag (mirrors
+// ResumeBullet.category's convention) used to narrow which snippets are suggested for a given
+// application context. `template` supports {{org}}/{{role}}/{{orgNotes}} placeholders resolved
+// server-side at read time (see ../src/answerTemplate.ts) — unknown placeholders are left
+// verbatim in the output and reported separately, never silently blanked.
+model AnswerSnippet {
+  id        String   @id @default(cuid())
+  category  String
+  question  String   // the recurring question this answers, for matching/display
+  template  String   // the answer body, may contain {{org}}/{{role}}/{{orgNotes}} placeholders
+  tags      String?  // comma-separated free-text tags, same convention as ResumeBullet.tags
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  overrides AnswerOverride[]
+}
+
+// A full override of a specific application's answer to a specific question — not a tweak of an
+// AnswerSnippet, a replacement. Keyed by applicationId + questionKey (a free-text identifier for
+// the question, since no adapter reliably exposes an application's actual ATS question text in
+// parseable form across 5+ ATS shapes). snippetId is optional: an override can exist standalone
+// (no matching reusable snippet at all) or be linked to the snippet it's overriding, for display
+// purposes ("overriding your usual answer to X").
+model AnswerOverride {
+  id            String         @id @default(cuid())
+  applicationId String
+  questionKey   String
+  answer        String         // full override text, may also contain {{org}}/{{role}}/{{orgNotes}} placeholders
+  snippetId     String?
+  snippet       AnswerSnippet? @relation(fields: [snippetId], references: [id], onDelete: SetNull)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@unique([applicationId, questionKey])
+  @@index([applicationId])
+}

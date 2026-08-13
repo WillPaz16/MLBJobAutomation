@@ -48,6 +48,12 @@ afterEach(async () => {
   await prisma.tonePreset.deleteMany();
   await prisma.candidateProfile.deleteMany();
   await prisma.savedSearch.deleteMany();
+  // FK ordering: AnswerOverride references AnswerSnippet (nullable, SetNull, but still delete
+  // child-before-parent); EducationEntry references ApplicantIdentity.
+  await prisma.answerOverride.deleteMany();
+  await prisma.answerSnippet.deleteMany();
+  await prisma.educationEntry.deleteMany();
+  await prisma.applicantIdentity.deleteMany();
 });
 
 afterAll(async () => {

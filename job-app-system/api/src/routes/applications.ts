@@ -2,8 +2,80 @@ import { Router } from "express";
 import { prisma } from "../db.js";
 import { asyncHandler, HttpError } from "../asyncHandler.js";
 import { paginationSchema, updateApplicationSchema } from "../validation.js";
+import { resolveTemplate, type TemplateContext } from "../answerTemplate.js";
 
 export const applicationsRouter = Router();
+
+// Shared by both prep-context's `resolvedAnswers` and apply-pack — resolves every active
+// AnswerSnippet against this application's context (org/role/orgNotes), substituting a matching
+// AnswerOverride's full text in place of the snippet's template when one exists for this specific
+// application, plus any standalone override (no linked snippet) as its own entry. Each entry
+// reports its own `unresolved` placeholders — never silently blanked (see answerTemplate.ts).
+async function computeResolvedAnswers(applicationId: string, context: TemplateContext) {
+  const [snippets, overrides] = await Promise.all([
+    prisma.answerSnippet.findMany({ where: { isActive: true } }),
+    prisma.answerOverride.findMany({ where: { applicationId } }),
+  ]);
+
+  const overrideBySnippetId = new Map(
+    overrides.filter((o) => o.snippetId).map((o) => [o.snippetId as string, o])
+  );
+  const usedOverrideIds = new Set<string>();
+
+  type ResolvedAnswer = {
+    snippetId: string | null;
+    category: string | null;
+    question: string | null;
+    questionKey: string | null;
+    source: "snippet" | "override";
+    text: string;
+    unresolved: string[];
+  };
+
+  const resolvedAnswers: ResolvedAnswer[] = snippets.map((snippet) => {
+    const override = overrideBySnippetId.get(snippet.id);
+    if (override) {
+      usedOverrideIds.add(override.id);
+      const { text, unresolved } = resolveTemplate(override.answer, context);
+      return {
+        snippetId: snippet.id,
+        category: snippet.category,
+        question: snippet.question,
+        questionKey: override.questionKey,
+        source: "override" as const,
+        text,
+        unresolved,
+      };
+    }
+    const { text, unresolved } = resolveTemplate(snippet.template, context);
+    return {
+      snippetId: snippet.id,
+      category: snippet.category,
+      question: snippet.question,
+      questionKey: null as string | null,
+      source: "snippet" as const,
+      text,
+      unresolved,
+    };
+  });
+
+  // Standalone overrides with no matching (or no) snippet link still need to surface.
+  for (const override of overrides) {
+    if (usedOverrideIds.has(override.id)) continue;
+    const { text, unresolved } = resolveTemplate(override.answer, context);
+    resolvedAnswers.push({
+      snippetId: override.snippetId,
+      category: null,
+      question: null,
+      questionKey: override.questionKey,
+      source: "override" as const,
+      text,
+      unresolved,
+    });
+  }
+
+  return resolvedAnswers;
+}
 
 applicationsRouter.get(
   "/",
@@ -49,7 +121,47 @@ applicationsRouter.get(
       },
     });
 
-    res.json({ application, orgProfile, tonePreset, resumeBullets });
+    // v8 Phase 4: resolved answer-library text only — NEVER identity PII. This response feeds
+    // the tailor-application skill's prompts; a DOB/address/EEO field has no business in a
+    // cover-letter drafting context. PII lives only behind GET /:id/apply-pack below.
+    const resolvedAnswers = await computeResolvedAnswers(application.id, {
+      org: application.posting.organization,
+      role: application.posting.title,
+      orgNotes: orgProfile?.notes ?? null,
+    });
+
+    res.json({ application, orgProfile, tonePreset, resumeBullets, resolvedAnswers });
+  })
+);
+
+// The ONLY endpoint that returns ApplicantIdentity PII — this is exactly what the Phase 0 CORS
+// origin-allowlist was built to protect. Feeds Phase 5/6's apply-assist UI/helper (not built
+// here). Includes posting + application + documents + resolved answers alongside identity so a
+// future consumer has everything needed for one apply-assist pass in one call.
+applicationsRouter.get(
+  "/:id/apply-pack",
+  asyncHandler(async (req, res) => {
+    const application = await prisma.application.findUnique({
+      where: { id: req.params.id },
+      include: { posting: true, resumeDoc: true, coverDoc: true },
+    });
+    if (!application) throw new HttpError(404, "Application not found");
+
+    const [identity, orgProfile] = await Promise.all([
+      prisma.applicantIdentity.findUnique({
+        where: { id: "identity" },
+        include: { education: true },
+      }),
+      prisma.orgProfile.findUnique({ where: { organizationName: application.posting.organization } }),
+    ]);
+
+    const resolvedAnswers = await computeResolvedAnswers(application.id, {
+      org: application.posting.organization,
+      role: application.posting.title,
+      orgNotes: orgProfile?.notes ?? null,
+    });
+
+    res.json({ application, identity, resolvedAnswers });
   })
 );
 
