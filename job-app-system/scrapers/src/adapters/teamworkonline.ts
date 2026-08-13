@@ -73,16 +73,26 @@ export const teamworkOnlineAdapter: Adapter = {
     const detailPaths = extractDetailLinks(listingHtml, orgPath);
 
     const postings: NormalizedPosting[] = [];
+    let parseFailures = 0;
     for (const path of detailPaths) {
       const url = `https://www.teamworkonline.com${path}`;
       const detailRes = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
-      if (!detailRes.ok) continue;
+      if (!detailRes.ok) {
+        parseFailures++;
+        continue;
+      }
       const detailHtml = await detailRes.text();
       const jobPosting = extractJobPosting(detailHtml);
-      if (!jobPosting || jobPosting["@type"] !== "JobPosting") continue;
+      if (!jobPosting || jobPosting["@type"] !== "JobPosting") {
+        parseFailures++;
+        continue;
+      }
 
       const title = jobPosting.title as string | undefined;
-      if (!title) continue;
+      if (!title) {
+        parseFailures++;
+        continue;
+      }
 
       const place = jobPosting.jobLocation?.[0]?.address;
       const location = place ? [place.addressLocality, place.addressRegion].filter(Boolean).join(", ") : undefined;
@@ -100,6 +110,16 @@ export const teamworkOnlineAdapter: Adapter = {
         salary: extractSalary(jobPosting),
         postedAt: jobPosting.datePosted ? new Date(jobPosting.datePosted) : undefined,
       });
+    }
+
+    // One malformed posting shouldn't abort a whole org (the per-posting catch/continue above
+    // already handles that) — but total parse failure across a non-empty listing means the
+    // listing HTML or the JSON-LD shape has rotted, not that the org genuinely has zero postings.
+    if (detailPaths.length > 0 && parseFailures === detailPaths.length) {
+      throw new Error(
+        `TeamWork Online: found ${detailPaths.length} listing link(s) for ${organizationName} but ` +
+          `every detail page failed to parse — listing HTML or JSON-LD shape likely changed`
+      );
     }
 
     return postings;

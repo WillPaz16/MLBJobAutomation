@@ -57,6 +57,46 @@ describe("greenhouseAdapter", () => {
       greenhouseAdapter.fetchPostings({ boardToken: "missing", organizationName: "Missing Co" })
     ).rejects.toThrow(/Greenhouse fetch failed/);
   });
+
+  it("merges multiple boardTokens for one org into a single result (e.g. Phillies/Athletics-style dual boards)", async () => {
+    server.use(
+      http.get("https://boards-api.greenhouse.io/v1/boards/boarda/jobs", () =>
+        HttpResponse.json({
+          jobs: [
+            {
+              id: 1,
+              title: "Analyst A",
+              absolute_url: "https://boards.greenhouse.io/boarda/jobs/1",
+              location: { name: "Remote" },
+              updated_at: "2026-01-01T00:00:00Z",
+            },
+          ],
+        })
+      ),
+      http.get("https://boards-api.greenhouse.io/v1/boards/boardb/jobs", () =>
+        HttpResponse.json({
+          jobs: [
+            {
+              id: 2,
+              title: "Analyst B",
+              absolute_url: "https://boards.greenhouse.io/boardb/jobs/2",
+              location: { name: "Remote" },
+              updated_at: "2026-01-01T00:00:00Z",
+            },
+          ],
+        })
+      )
+    );
+
+    const postings = await greenhouseAdapter.fetchPostings({
+      boardTokens: ["boarda", "boardb"],
+      organizationName: "DualBoard Co",
+    });
+
+    expect(postings).toHaveLength(2);
+    expect(postings.map((p) => p.externalId).sort()).toEqual(["1", "2"]);
+    expect(postings.every((p) => p.organization === "DualBoard Co")).toBe(true);
+  });
 });
 
 describe("leverAdapter", () => {
@@ -481,7 +521,7 @@ describe("teamworkOnlineAdapter", () => {
     ).rejects.toThrow(/TeamWork Online fetch failed/);
   });
 
-  it("skips detail pages that fail to fetch or have no JobPosting JSON-LD", async () => {
+  it("throws when the listing is non-empty but EVERY detail page fails to parse (format/selector rot, not a real empty board)", async () => {
     server.use(
       http.get("https://www.teamworkonline.com/baseball-jobs/emptyorg/emptyorg", () =>
         HttpResponse.html(`<a href="/baseball-jobs/emptyorg/emptyorg/broken-link-1">Broken</a>`)
@@ -490,10 +530,36 @@ describe("teamworkOnlineAdapter", () => {
         HttpResponse.html("<html><body>no jsonld here</body></html>")
       )
     );
+    await expect(
+      teamworkOnlineAdapter.fetchPostings({
+        orgPath: "emptyorg/emptyorg",
+        organizationName: "Empty Co",
+      })
+    ).rejects.toThrow(/every detail page failed to parse/);
+  });
+
+  it("returns the successful postings when SOME detail pages fail but not all (one bad posting doesn't abort the org)", async () => {
+    server.use(
+      http.get("https://www.teamworkonline.com/baseball-jobs/mixedorg/mixedorg", () =>
+        HttpResponse.html(`
+          <a href="/baseball-jobs/mixedorg/mixedorg/good-link-2181938">Good</a>
+          <a href="/baseball-jobs/mixedorg/mixedorg/broken-link-1234567">Broken</a>
+        `)
+      ),
+      http.get(
+        "https://www.teamworkonline.com/baseball-jobs/mixedorg/mixedorg/good-link-2181938",
+        () => HttpResponse.html(DETAIL_HTML)
+      ),
+      http.get(
+        "https://www.teamworkonline.com/baseball-jobs/mixedorg/mixedorg/broken-link-1234567",
+        () => HttpResponse.html("<html><body>no jsonld here</body></html>")
+      )
+    );
     const postings = await teamworkOnlineAdapter.fetchPostings({
-      orgPath: "emptyorg/emptyorg",
-      organizationName: "Empty Co",
+      orgPath: "mixedorg/mixedorg",
+      organizationName: "Mixed Co",
     });
-    expect(postings).toEqual([]);
+    expect(postings).toHaveLength(1);
+    expect(postings[0].externalId).toBe("2181938");
   });
 });

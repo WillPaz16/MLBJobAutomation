@@ -37,6 +37,22 @@ export const updateApplicationSchema = z.object({
   appliedAt: z.string().datetime().optional(),
 });
 
+// POST /api/applications/reorder — batch persistence for Pipeline's drag/move actions. Each entry
+// carries the FULL new state for that row (stage + order), computed client-side by
+// ui/src/lib/reorder.ts against the unfiltered application list, so the transaction below can
+// just write what it's given rather than re-deriving order itself.
+export const reorderApplicationsSchema = z.object({
+  updates: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        stage: applicationStageSchema,
+        order: z.number().int().nonnegative(),
+      })
+    )
+    .min(1),
+});
+
 export const updatePostingSchema = z.object({
   title: z.string().optional(),
   organization: z.string().optional(),

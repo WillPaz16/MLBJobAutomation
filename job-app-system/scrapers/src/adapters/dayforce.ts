@@ -34,7 +34,17 @@ export const dayforceAdapter: Adapter = {
       });
 
       const response = await responsePromise;
-      if (!response) return [];
+      // The jobposting/search request fires on every portal load regardless of result count —
+      // a timeout here is never a legitimately empty board, it means the page never made (or we
+      // never caught) the request at all: a slow page, a renamed API path, or a network hiccup.
+      // Throw instead of silently returning [], so runDiscovery's guard can catch it rather than
+      // this being indistinguishable from "this org genuinely has zero postings right now."
+      if (!response) {
+        throw new Error(
+          `Dayforce: no response from /api/geo/${tenant}/jobposting/search within timeout — ` +
+            `page may have failed to load or the API path may have changed`
+        );
+      }
       const body = await response.json().catch(() => undefined);
       const jobPostings: any[] = body?.jobPostings ?? [];
 

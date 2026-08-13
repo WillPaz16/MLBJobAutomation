@@ -24,6 +24,14 @@ interface TeamPageConfig {
   // once verified live against the real detail page — don't guess at a shape. Omit entirely for
   // sites where the detail page isn't reachable/verifiable (e.g. nested cross-origin iframes).
   descriptionSelector?: string;
+  // Optional marker selector confirming a genuinely empty listing (e.g. a "no open jobs right
+  // now" message). A cardSelector timeout is genuinely ambiguous on its own — it could mean a
+  // real empty board, OR a rotted selector / a page that never rendered. When set, a timeout is
+  // only trusted as a real empty board if this selector is ALSO present; if it's set but absent,
+  // or if it's not configured at all, the timeout is treated conservatively as adapter/selector
+  // rot and throws instead of silently returning []. Only set this after confirming the real
+  // empty-state marker live against the actual page — don't guess at a shape.
+  emptyStateSelector?: string;
 }
 
 async function fetchDescription(browser: import("playwright").Browser, url: string, selector: string): Promise<string | undefined> {
@@ -59,6 +67,7 @@ export const teamPageAdapter: Adapter = {
       locationSelector,
       frameUrlContains,
       descriptionSelector,
+      emptyStateSelector,
     } = config;
     const browser = await chromium.launch();
     try {
@@ -66,9 +75,31 @@ export const teamPageAdapter: Adapter = {
       await page.goto(listUrl, { waitUntil: "networkidle", timeout: 30000 });
 
       const target: Page | Frame = frameUrlContains ? await findFrame(page, frameUrlContains) : page;
-      // A legitimately empty listing (zero current postings) means cardSelector never appears —
-      // that's not a failure, so don't let the timeout here bubble up as an error.
-      await target.waitForSelector(cardSelector, { timeout: 15000 }).catch(() => {});
+      // cardSelector never appearing is genuinely ambiguous: it could mean a real empty listing
+      // (zero current postings) or a rotted selector / a page that never rendered. Only trust it
+      // as a real empty board when emptyStateSelector is configured AND actually present on the
+      // page — otherwise treat it conservatively as adapter breakage and throw, backstopped
+      // either way by runDiscovery's dynamic-floor guard.
+      const cardsAppeared = await target
+        .waitForSelector(cardSelector, { timeout: 15000 })
+        .then(() => true)
+        .catch(() => false);
+
+      if (!cardsAppeared) {
+        const emptyStateFound = emptyStateSelector
+          ? await target
+              .waitForSelector(emptyStateSelector, { timeout: 2000 })
+              .then(() => true)
+              .catch(() => false)
+          : false;
+        if (!emptyStateFound) {
+          throw new Error(
+            `teamPageAdapter: "${cardSelector}" never appeared on ${listUrl}${
+              emptyStateSelector ? ` and emptyStateSelector "${emptyStateSelector}" was not found either` : " (no emptyStateSelector configured)"
+            } — treating as selector rot / a page that failed to render, not a genuine empty board`
+          );
+        }
+      }
 
       const cards = await target.$$(cardSelector);
       const postings: NormalizedPosting[] = [];

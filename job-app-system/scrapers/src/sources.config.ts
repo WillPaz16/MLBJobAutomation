@@ -5,13 +5,18 @@
 import { FLAT_SECTION, type JobListRepoConfig } from "./adapters/jobListRepo.js";
 
 // Greenhouse: find an org's board token from their careers page URL: boards.greenhouse.io/<boardToken>.
-export const greenhouseSources: { boardToken: string; organizationName: string }[] = [
+export const greenhouseSources: { boardToken?: string; boardTokens?: string[]; organizationName: string }[] = [
   // MLB baseball ops/analytics-adjacent boards
-  // Phillies run two separate Greenhouse boards — business ops returned 0 live jobs when
-  // last checked (2026-08-11) but is kept since it's a real, distinct board that could post
-  // again; baseball ops is where roles like "Quantitative Analyst Associate" actually show up.
-  { boardToken: "philliesbusinessops", organizationName: "Philadelphia Phillies" },
-  { boardToken: "philliesbaseballoperations", organizationName: "Philadelphia Phillies" },
+  // Phillies run two separate Greenhouse boards for the same org — business ops returned 0 live
+  // jobs when last checked (2026-08-11) but is kept since it's a real, distinct board that could
+  // post again; baseball ops is where roles like "Quantitative Analyst Associate" actually show
+  // up. Combined into ONE config entry via boardTokens (rather than two separate entries sharing
+  // one organizationName) so this results in exactly one ingestPostings call for "Philadelphia
+  // Phillies" — two entries with the same organizationName under one shared "greenhouse" Source
+  // would each run ingest.ts's closing pass scoped to (sourceId, organization), and each board's
+  // pass would only see ITS OWN externalIds as "seen," incorrectly treating the other board's
+  // still-live postings as missing. See CLAUDE.md / v9 plan Phase 4 task 3.
+  { boardTokens: ["philliesbusinessops", "philliesbaseballoperations"], organizationName: "Philadelphia Phillies" },
   { boardToken: "clevelandguardiansbops", organizationName: "Cleveland Guardians" },
   { boardToken: "baltimoreorioles", organizationName: "Baltimore Orioles" },
   // athleticsbaseballops returns 0 live jobs (checked 2026-08-11) and is likely dead/renamed —
@@ -19,9 +24,9 @@ export const greenhouseSources: { boardToken: string; organizationName: string }
   // Production Technology (Ballpark)") and athletics (1 live job, "Bullpen Catcher") are the
   // real current boards, both curl-verified live. Dropping the dead token rather than keeping
   // it like Phillies' since there's no reason to expect it to start posting again under that
-  // exact name.
-  { boardToken: "athleticsbusinessops", organizationName: "Athletics" },
-  { boardToken: "athletics", organizationName: "Athletics" },
+  // exact name. Combined into one boardTokens entry for the same closing-pass-scoping reason as
+  // Phillies above — one organizationName, one ingestPostings call.
+  { boardTokens: ["athleticsbusinessops", "athletics"], organizationName: "Athletics" },
   // Non-MLB employer boards, added deliberately and narrowly per the v7 plan's "3d. Employer
   // boards" — Hudl and Catapult Sports are both sports-analytics employers whose full boards are
   // small enough (~25-27 jobs each) not to flood Discovery, unlike the generic big-tech Greenhouse

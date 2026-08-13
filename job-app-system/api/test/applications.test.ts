@@ -213,6 +213,81 @@ describe("POST /api/postings/:id/approve — seed stage event", () => {
   });
 });
 
+describe("POST /api/applications/reorder", () => {
+  it("renumbers all rows in the batch in one transaction", async () => {
+    const posting = await createPosting();
+    const a0 = await createApplication(posting.id, { stage: "APPLIED", order: 0 });
+    const a1 = await createApplication(posting.id, { stage: "APPLIED", order: 1 });
+    const a2 = await createApplication(posting.id, { stage: "APPLIED", order: 2 });
+
+    const res = await request(app)
+      .post("/api/applications/reorder")
+      .send({
+        updates: [
+          { id: a2.id, stage: "APPLIED", order: 0 },
+          { id: a0.id, stage: "APPLIED", order: 1 },
+          { id: a1.id, stage: "APPLIED", order: 2 },
+        ],
+      });
+
+    expect(res.status).toBe(200);
+    const rows = await prisma.application.findMany({ where: { postingId: posting.id } });
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    expect(byId.get(a2.id)?.order).toBe(0);
+    expect(byId.get(a0.id)?.order).toBe(1);
+    expect(byId.get(a1.id)?.order).toBe(2);
+  });
+
+  it("rolls back the entire batch when one id doesn't exist — every row stays unchanged", async () => {
+    const posting = await createPosting();
+    const a0 = await createApplication(posting.id, { stage: "APPLIED", order: 0 });
+    const a1 = await createApplication(posting.id, { stage: "APPLIED", order: 1 });
+
+    const res = await request(app)
+      .post("/api/applications/reorder")
+      .send({
+        updates: [
+          { id: a0.id, stage: "APPLIED", order: 5 },
+          { id: "does-not-exist", stage: "APPLIED", order: 6 },
+        ],
+      });
+
+    expect(res.status).toBe(400);
+    const rows = await prisma.application.findMany({ where: { postingId: posting.id } });
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    expect(byId.get(a0.id)?.order).toBe(0);
+    expect(byId.get(a1.id)?.order).toBe(1);
+  });
+
+  it("writes exactly one ApplicationStageEvent and stamps appliedAt for an entry moving into APPLIED for the first time", async () => {
+    const posting = await createPosting();
+    const a0 = await createApplication(posting.id, { stage: "REVIEWING", order: 0 });
+    const a1 = await createApplication(posting.id, { stage: "APPLIED", order: 0 });
+
+    const res = await request(app)
+      .post("/api/applications/reorder")
+      .send({
+        updates: [
+          { id: a0.id, stage: "APPLIED", order: 0 },
+          { id: a1.id, stage: "APPLIED", order: 1 },
+        ],
+      });
+
+    expect(res.status).toBe(200);
+
+    const events = await prisma.applicationStageEvent.findMany({ where: { applicationId: a0.id } });
+    expect(events).toHaveLength(1);
+    expect(events[0].fromStage).toBe("REVIEWING");
+    expect(events[0].toStage).toBe("APPLIED");
+
+    const a1Events = await prisma.applicationStageEvent.findMany({ where: { applicationId: a1.id } });
+    expect(a1Events).toHaveLength(0); // a1 was already APPLIED — no stage change, no event
+
+    const updatedA0 = await prisma.application.findUnique({ where: { id: a0.id } });
+    expect(updatedA0?.appliedAt).not.toBeNull();
+  });
+});
+
 describe("DELETE /api/applications/:id", () => {
   it("deletes an application", async () => {
     const posting = await createPosting();

@@ -7,21 +7,24 @@ import { Pipeline } from "../src/pages/Pipeline";
 import { Documents } from "../src/pages/Documents";
 import { Analytics } from "../src/pages/Analytics";
 
-const { documentsRemove, toastError, toastSuccess, MockApiError } = vi.hoisted(() => {
-  class MockApiError extends Error {
-    status: number;
-    constructor(status: number, message: string) {
-      super(message);
-      this.status = status;
+const { documentsRemove, applicationsRemove, applicationsReorder, toastError, toastSuccess, MockApiError } =
+  vi.hoisted(() => {
+    class MockApiError extends Error {
+      status: number;
+      constructor(status: number, message: string) {
+        super(message);
+        this.status = status;
+      }
     }
-  }
-  return {
-    documentsRemove: vi.fn().mockResolvedValue(undefined),
-    toastError: vi.fn(),
-    toastSuccess: vi.fn(),
-    MockApiError,
-  };
-});
+    return {
+      documentsRemove: vi.fn().mockResolvedValue(undefined),
+      applicationsRemove: vi.fn().mockResolvedValue(undefined),
+      applicationsReorder: vi.fn().mockResolvedValue([]),
+      toastError: vi.fn(),
+      toastSuccess: vi.fn(),
+      MockApiError,
+    };
+  });
 
 vi.mock("sonner", () => ({
   toast: { error: toastError, success: toastSuccess },
@@ -51,7 +54,12 @@ vi.mock("../src/api/client", () => ({
       update: vi.fn(),
       remove: vi.fn(),
     },
-    applications: { list: vi.fn().mockResolvedValue([]), update: vi.fn() },
+    applications: {
+      list: vi.fn().mockResolvedValue([]),
+      update: vi.fn(),
+      remove: applicationsRemove,
+      reorder: applicationsReorder,
+    },
     documents: {
       list: vi.fn().mockResolvedValue([]),
       get: vi.fn().mockResolvedValue(null),
@@ -172,5 +180,115 @@ describe("page smoke tests", () => {
         expect.stringContaining("attached to an application — remove it from there first")
       )
     );
+  });
+
+  function pipelineApp(overrides: Record<string, unknown>) {
+    return {
+      id: "app-default",
+      postingId: "posting-default",
+      stage: "FOUND",
+      order: 0,
+      resumeDocId: null,
+      coverDocId: null,
+      notes: null,
+      appliedAt: null,
+      updatedAt: "2026-01-01T00:00:00Z",
+      createdAt: "2026-01-01T00:00:00Z",
+      posting: {
+        id: "posting-default",
+        title: "Some Job",
+        organization: "Some Org",
+        category: "BASEBALL_ANALYTICS",
+        location: null,
+        url: null,
+        postedAt: null,
+        discoveredAt: "2026-01-01T00:00:00Z",
+        closedAt: null,
+        source: { type: "greenhouse" },
+      },
+      ...overrides,
+    };
+  }
+
+  it("Pipeline delete flow: cancel keeps the application, confirm removes it", async () => {
+    applicationsRemove.mockClear();
+    applicationsRemove.mockResolvedValueOnce(undefined);
+    const user = userEvent.setup();
+    const { api } = await import("../src/api/client");
+    (api.applications.list as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+      pipelineApp({ id: "app-1", posting: { ...pipelineApp({}).posting, title: "Analyst Role" } }),
+    ]);
+
+    renderWithRouter(<Pipeline />);
+    await waitFor(() => expect(screen.getByText("Analyst Role")).toBeInTheDocument());
+
+    await user.click(screen.getByRole("button", { name: "More actions" }));
+    await user.click(await screen.findByText("Remove from pipeline"));
+    expect(await screen.findByText("Remove from pipeline?")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByText("Remove from pipeline?")).not.toBeInTheDocument());
+    expect(applicationsRemove).not.toHaveBeenCalled();
+    expect(screen.getByText("Analyst Role")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "More actions" }));
+    await user.click(await screen.findByText("Remove from pipeline"));
+    await user.click(await screen.findByRole("button", { name: "Remove" }));
+
+    await waitFor(() => expect(applicationsRemove).toHaveBeenCalledWith("app-1"));
+    await waitFor(() => expect(screen.queryByText("Analyst Role")).not.toBeInTheDocument());
+  });
+
+  it("Pipeline 'Move to stage' persists order from the FULL destination column, not the category-filtered view", async () => {
+    applicationsReorder.mockClear();
+    const user = userEvent.setup();
+    const { api } = await import("../src/api/client");
+
+    // Two apps already sit in REVIEWING (one per category) — the FULL column has length 2.
+    // Only the DATA_SCIENCE one is visible once the category filter below is applied, so a
+    // pre-fix implementation computing order from the filtered view would compute 1, not 2.
+    (api.applications.list as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+      pipelineApp({
+        id: "reviewing-analytics",
+        stage: "REVIEWING",
+        order: 0,
+        posting: { ...pipelineApp({}).posting, id: "p-ra", title: "Reviewing Analytics", category: "BASEBALL_ANALYTICS" },
+      }),
+      pipelineApp({
+        id: "reviewing-ds",
+        stage: "REVIEWING",
+        order: 1,
+        posting: { ...pipelineApp({}).posting, id: "p-rd", title: "Reviewing DS", category: "DATA_SCIENCE" },
+      }),
+      pipelineApp({
+        id: "found-ds",
+        stage: "FOUND",
+        order: 0,
+        posting: { ...pipelineApp({}).posting, id: "p-fd", title: "Found DS", category: "DATA_SCIENCE" },
+      }),
+    ]);
+
+    renderWithRouter(<Pipeline />);
+    await waitFor(() => expect(screen.getByText("Found DS")).toBeInTheDocument());
+
+    // Filter down to Data Science — hides "Reviewing Analytics" from the board.
+    await user.click(screen.getByRole("combobox"));
+    await user.click(await screen.findByRole("option", { name: "Data Science" }));
+    await waitFor(() => expect(screen.queryByText("Reviewing Analytics")).not.toBeInTheDocument());
+    expect(screen.getByText("Found DS")).toBeInTheDocument();
+
+    // Move the one visible FOUND card into REVIEWING via the non-drag dropdown path.
+    // FOUND renders before REVIEWING (STAGES order), so the FOUND column's menu button is first.
+    const menuButtons = screen.getAllByRole("button", { name: "More actions" });
+    await user.click(menuButtons[0]);
+    await user.click(await screen.findByText("Move to Reviewing"));
+
+    await waitFor(() => expect(applicationsReorder).toHaveBeenCalled());
+    const payload = applicationsReorder.mock.calls[0][0] as { id: string; stage: string; order: number }[];
+    const moved = payload.find((u) => u.id === "found-ds");
+    expect(moved?.stage).toBe("REVIEWING");
+    // The FULL REVIEWING column has 2 existing rows (analytics + ds), even though only 1 is
+    // visible under the filter — the new card must land at order 2, not 1.
+    expect(moved?.order).toBe(2);
   });
 });

@@ -102,15 +102,41 @@ describe("teamPageAdapter", () => {
     expect(postings[0].description).toBeUndefined();
   });
 
-  it("returns an empty array rather than throwing when there are genuinely no postings", async () => {
+  it("returns an empty array rather than throwing when emptyStateSelector confirms a genuine empty board", async () => {
     const postings = await teamPageAdapter.fetchPostings({
       organizationName: "Test Team",
       listUrl: `${baseUrl}/empty`,
       cardSelector: ".row.job",
       titleSelector: "a.title",
       linkSelector: "a.title",
+      emptyStateSelector: "p",
     });
     expect(postings).toEqual([]);
+  }, 20000);
+
+  it("throws on a cardSelector timeout when no emptyStateSelector is configured (can't tell rot from real empty)", async () => {
+    await expect(
+      teamPageAdapter.fetchPostings({
+        organizationName: "Test Team",
+        listUrl: `${baseUrl}/empty`,
+        cardSelector: ".row.job",
+        titleSelector: "a.title",
+        linkSelector: "a.title",
+      })
+    ).rejects.toThrow(/never appeared/);
+  }, 20000);
+
+  it("throws on a cardSelector timeout when emptyStateSelector is configured but not found", async () => {
+    await expect(
+      teamPageAdapter.fetchPostings({
+        organizationName: "Test Team",
+        listUrl: `${baseUrl}/empty`,
+        cardSelector: ".row.job",
+        titleSelector: "a.title",
+        linkSelector: "a.title",
+        emptyStateSelector: ".no-such-marker",
+      })
+    ).rejects.toThrow(/never appeared/);
   }, 20000);
 
   it("throws if the expected frame never appears", async () => {

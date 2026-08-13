@@ -67,13 +67,37 @@ describe("dayforceAdapter", () => {
     });
   }, 20000);
 
-  it("returns an empty array if the API response never arrives", async () => {
+  it("throws (does not silently return []) if the API response never arrives", async () => {
     const emptyServer = createServer((_req, res) => {
       res.setHeader("Content-Type", "text/html");
       res.end("<html><body>no fetch here</body></html>");
     });
     await new Promise<void>((resolve) => emptyServer.listen(0, resolve));
     const address = emptyServer.address();
+    const port = typeof address === "object" && address ? address.port : 0;
+
+    await expect(
+      dayforceAdapter.fetchPostings({
+        tenant: "testteam",
+        organizationName: "Test Team",
+        baseUrl: `http://localhost:${port}`,
+      })
+    ).rejects.toThrow(/no response/);
+    emptyServer.close();
+  }, 40000);
+
+  it("still returns an empty array when the response arrives with a genuinely empty jobPostings list", async () => {
+    const genuinelyEmptyServer = createServer((req, res) => {
+      if (req.url?.includes("/api/geo/testteam/jobposting/search")) {
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify({ jobPostings: [] }));
+      } else {
+        res.setHeader("Content-Type", "text/html");
+        res.end(PORTAL_HTML);
+      }
+    });
+    await new Promise<void>((resolve) => genuinelyEmptyServer.listen(0, resolve));
+    const address = genuinelyEmptyServer.address();
     const port = typeof address === "object" && address ? address.port : 0;
 
     const postings = await dayforceAdapter.fetchPostings({
@@ -83,6 +107,6 @@ describe("dayforceAdapter", () => {
     });
 
     expect(postings).toEqual([]);
-    emptyServer.close();
-  }, 40000);
+    genuinelyEmptyServer.close();
+  }, 20000);
 });

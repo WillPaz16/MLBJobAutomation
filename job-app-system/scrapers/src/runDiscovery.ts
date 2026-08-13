@@ -26,13 +26,41 @@ import { getOrCreateSource, ingestPostings } from "./ingest.js";
 import { prisma } from "./db.js";
 import type { Adapter } from "./types.js";
 
-async function runAdapter(adapter: Adapter, configs: Record<string, any>[]) {
+export async function runAdapter(adapter: Adapter, configs: Record<string, any>[]) {
   const source = await getOrCreateSource(adapter.sourceName, adapter.sourceType, {});
   let totalInserted = 0;
 
   for (const config of configs) {
     try {
       const postings = await adapter.fetchPostings(config);
+
+      // Dynamic floor: an adapter returning far fewer postings than this org's current active
+      // count is much more likely to be a scraper break (rotted selector, renamed API, timeout)
+      // than a real 50%+ mass-closure of live jobs. Scoped to (source.id, organization) TOGETHER
+      // — one Source row is shared across every org an adapter covers (e.g. all Greenhouse-hosted
+      // teams share the "greenhouse" Source), so an unscoped count would compare one org's
+      // returned postings against every org's combined active count and abort everything. Same
+      // reasoning as ingest.ts's closeMissingPostings. priorActive === 0 leaves the guard inert
+      // (the "this org always returns zero" case, e.g. the Twins page) so a genuinely-empty org
+      // is never blocked from ingesting.
+      //
+      // Honest tradeoff (deliberate, documented in CLAUDE.md/the v9 plan): because this throws
+      // BEFORE ingestPostings runs, missedRuns never increments for this org on a bad run, so an
+      // org that genuinely drops to zero postings will NEVER auto-close via the normal 2-missed-
+      // runs path. That's the accepted trade — fail toward "stays visible and shouts in the logs"
+      // over "silently closes 30 live postings" — so the error message below must be loud and
+      // specific (org name, prior count, new count), since it's the entire mitigation. No
+      // auto-override, no suppression list.
+      const priorActive = await prisma.posting.count({
+        where: { sourceId: source.id, organization: config.organizationName, closedAt: null },
+      });
+      if (priorActive > 0 && postings.length < priorActive * 0.5) {
+        throw new Error(
+          `${adapter.sourceName}: ${config.organizationName} returned ${postings.length} posting(s), ` +
+            `down from ${priorActive} active — refusing to run the closing pass. Needs a look.`
+        );
+      }
+
       const { inserted, skipped, closed, reopened, flaggedDuplicates } = await ingestPostings(
         source.id,
         postings,

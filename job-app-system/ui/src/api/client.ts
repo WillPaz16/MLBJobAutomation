@@ -156,6 +156,14 @@ export const api = {
       }>
     ) => request<Application>(`/applications/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
     remove: (id: string) => request<void>(`/applications/${id}`, { method: "DELETE" }),
+    // Batch persistence backing ui/src/lib/reorder.ts's output — one transaction server-side
+    // instead of N independent PATCHes, so a partial failure can't leave the server holding a
+    // subset of a reorder the client then reverts locally.
+    reorder: (updates: { id: string; stage: ApplicationStage; order: number }[]) =>
+      request<Application[]>("/applications/reorder", {
+        method: "POST",
+        body: JSON.stringify({ updates }),
+      }),
     prepContext: (id: string) => request<PrepContext>(`/applications/${id}/prep-context`),
     applyPack: (id: string) => request<ApplyPack>(`/applications/${id}/apply-pack`),
     // Not fetched via `request()` — this is a plain URL for a <a href>/download link; the browser

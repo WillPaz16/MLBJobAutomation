@@ -28,10 +28,12 @@ import {
   Kanban,
   MapPin,
   MoreVertical,
+  Trash2,
 } from "lucide-react";
 import { api } from "../api/client";
 import type { Application, ApplicationStage, Document } from "../api/types";
 import { htmlToPlainText, relativeTime } from "@/lib/utils";
+import { reorderWithinStage } from "@/lib/reorder";
 import { PrepContextPanel } from "@/components/PrepContextPanel";
 import { ApplyPanel } from "@/components/ApplyPanel";
 import { useEntrance } from "@/lib/useEntrance";
@@ -39,6 +41,7 @@ import { CATEGORY_FILTER_LABELS, CATEGORY_FILTER_OPTIONS, CATEGORY_LABELS, SOURC
 import { ErrorState } from "@/components/states/ErrorState";
 import { EmptyState } from "@/components/states/EmptyState";
 import { PageHeader, PageLayout } from "@/components/PageLayout";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -145,6 +148,7 @@ function CardBody({
   onAssignDoc,
   onMoveStage,
   onOpenDetail,
+  onRequestRemove,
   dragHandleProps,
   isDragOverlay = false,
 }: {
@@ -155,6 +159,7 @@ function CardBody({
   onAssignDoc: (field: "resumeDocId" | "coverDocId", docId: string) => void;
   onMoveStage: (stage: ApplicationStage) => void;
   onOpenDetail: () => void;
+  onRequestRemove?: () => void;
   dragHandleProps?: { attributes?: object; listeners?: object };
   /** True only for the dnd-kit DragOverlay clone — gets shadow-elev-3 instead of the normal
       hover-only elevation, since it's already "lifted" while being dragged. */
@@ -199,7 +204,7 @@ function CardBody({
                 variant="ghost"
                 size="icon-xs"
                 onPointerDown={(e) => e.stopPropagation()}
-                aria-label="Move to stage"
+                aria-label="More actions"
               />
             }
           >
@@ -211,6 +216,12 @@ function CardBody({
                 Move to {STAGE_LABELS[s]}
               </DropdownMenuItem>
             ))}
+            {onRequestRemove && (
+              <DropdownMenuItem variant="destructive" onClick={onRequestRemove}>
+                <Trash2 className="mr-1 size-3.5" />
+                Remove from pipeline
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </CardHeader>
@@ -382,6 +393,7 @@ function Column({
   onAssignDoc,
   onMoveStage,
   onOpenDetail,
+  onRequestRemove,
   entranceProps,
 }: {
   stage: ApplicationStage;
@@ -394,6 +406,7 @@ function Column({
   onAssignDoc: (id: string, field: "resumeDocId" | "coverDocId", docId: string) => void;
   onMoveStage: (id: string, stage: ApplicationStage) => void;
   onOpenDetail: (id: string) => void;
+  onRequestRemove: (id: string) => void;
   entranceProps: { className?: string; style?: React.CSSProperties };
 }) {
   // The droppable target stays mounted (and its id/ref unchanged) whether collapsed or
@@ -459,6 +472,7 @@ function Column({
               onAssignDoc={(field, docId) => onAssignDoc(a.id, field, docId)}
               onMoveStage={(newStage) => onMoveStage(a.id, newStage)}
               onOpenDetail={() => onOpenDetail(a.id)}
+              onRequestRemove={() => onRequestRemove(a.id)}
             />
           ))}
         </div>
@@ -478,6 +492,7 @@ export function Pipeline() {
   const [savingNotes, setSavingNotes] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const [removeTargetId, setRemoveTargetId] = useState<string | null>(null);
   const [collapsedStages, setCollapsedStages] = useState<Set<ApplicationStage>>(
     () => new Set(DEFAULT_COLLAPSED_STAGES)
   );
@@ -532,15 +547,18 @@ export function Pipeline() {
     return byStage;
   }, [visibleApplications]);
 
+  // Persists via the batch /reorder endpoint (one prisma.$transaction server-side) rather than N
+  // independent PATCHes — a partial-failure there can no longer leave the server holding a subset
+  // of a reorder that the client then reverts locally. `updated`/`changedIds` always come from
+  // reorderWithinStage(applications, ...) — the FULL unfiltered array — never from the
+  // category-filtered `sortedByColumn`, which is exactly the bug this replaces.
   async function persistReorder(updated: Application[], changedIds: Set<string>) {
     const previous = applications;
     setApplications(updated);
     try {
-      await Promise.all(
-        updated
-          .filter((a) => changedIds.has(a.id))
-          .map((a) => api.applications.update(a.id, { stage: a.stage, order: a.order }))
-      );
+      const changed = updated.filter((a) => changedIds.has(a.id));
+      if (changed.length === 0) return;
+      await api.applications.reorder(changed.map((a) => ({ id: a.id, stage: a.stage, order: a.order })));
     } catch (err) {
       setApplications(previous);
       toast.error(err instanceof Error ? err.message : "Failed to save board order — reverted");
@@ -560,36 +578,16 @@ export function Pipeline() {
     if (!activeApp) return;
 
     const overIsStage = (STAGES as readonly string[]).includes(over.id as string);
-    const destStage = overIsStage ? (over.id as ApplicationStage) : applications.find((a) => a.id === over.id)?.stage;
+    const overApp = overIsStage ? undefined : applications.find((a) => a.id === over.id);
+    const destStage = overIsStage ? (over.id as ApplicationStage) : overApp?.stage;
     if (!destStage) return;
 
-    const destItems = sortedByColumn[destStage].filter((a) => a.id !== activeApp.id);
-    const overIndex = overIsStage ? destItems.length : destItems.findIndex((a) => a.id === over.id);
-    const insertAt = overIndex === -1 ? destItems.length : overIndex;
-    destItems.splice(insertAt, 0, { ...activeApp, stage: destStage });
+    // `beforeId` is "the visible card being dropped onto/before" — null means append to the end
+    // of the column. A card mid-drag over a DIFFERENT stage than destStage (shouldn't normally
+    // happen given overIsStage/overApp above, but guarded defensively) is also treated as append.
+    const beforeId = overIsStage || !overApp || overApp.stage !== destStage ? null : (over.id as string);
 
-    const changedIds = new Set<string>();
-    const reindexed = destItems.map((a, index) => {
-      if (a.id === activeApp.id || a.order !== index || a.stage !== destStage) changedIds.add(a.id);
-      return { ...a, order: index, stage: destStage };
-    });
-
-    if (activeApp.stage !== destStage) {
-      // also compact the source column so its remaining cards have contiguous order values
-      const sourceItems = sortedByColumn[activeApp.stage]
-        .filter((a) => a.id !== activeApp.id)
-        .map((a, index) => {
-          if (a.order !== index) changedIds.add(a.id);
-          return { ...a, order: index };
-        });
-      const byId = new Map([...reindexed, ...sourceItems].map((a) => [a.id, a]));
-      const updated = applications.map((a) => byId.get(a.id) ?? a);
-      await persistReorder(updated, changedIds);
-      return;
-    }
-
-    const byId = new Map(reindexed.map((a) => [a.id, a]));
-    const updated = applications.map((a) => byId.get(a.id) ?? a);
+    const { updated, changedIds } = reorderWithinStage(applications, activeApp.id, destStage, beforeId);
     await persistReorder(updated, changedIds);
   }
 
@@ -597,16 +595,15 @@ export function Pipeline() {
     const previous = applications;
     const app = applications.find((a) => a.id === id);
     if (!app || app.stage === newStage) return;
-    const destOrder = sortedByColumn[newStage].length;
 
-    setApplications((prev) =>
-      prev.map((a) => (a.id === id ? { ...a, stage: newStage, order: destOrder } : a))
-    );
+    // appliedAt is decided server-side (see applications.ts's applyApplicationUpdate helper,
+    // shared by the single-row PATCH and the batch /reorder endpoint) — entering APPLIED sets it
+    // there in the same transaction as the stage-event write, so it's never computed client-side.
+    const { updated, changedIds } = reorderWithinStage(applications, id, newStage, null);
+    setApplications(updated);
     try {
-      // appliedAt is now decided server-side (see applications.ts's PATCH handler) — entering
-      // APPLIED sets it there in the same transaction as the stage-event write, so it's never
-      // computed client-side here.
-      await api.applications.update(id, { stage: newStage, order: destOrder });
+      const changed = updated.filter((a) => changedIds.has(a.id));
+      await api.applications.reorder(changed.map((a) => ({ id: a.id, stage: a.stage, order: a.order })));
     } catch (err) {
       setApplications(previous);
       toast.error(err instanceof Error ? err.message : "Failed to update stage — reverted");
@@ -622,6 +619,17 @@ export function Pipeline() {
     } catch (err) {
       setApplications(previous);
       toast.error(err instanceof Error ? err.message : "Failed to assign document — reverted");
+    }
+  }
+
+  async function removeApplication(id: string) {
+    try {
+      await api.applications.remove(id);
+      setApplications((prev) => prev.filter((a) => a.id !== id));
+      toast.success("Removed from pipeline");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to remove application");
+      throw err; // keep ConfirmDialog open so the failure is visible, not silently dismissed
     }
   }
 
@@ -707,6 +715,7 @@ export function Pipeline() {
                 onAssignDoc={onAssignDoc}
                 onMoveStage={moveStage}
                 onOpenDetail={openDetail}
+                onRequestRemove={setRemoveTargetId}
                 entranceProps={entrance(index)}
               />
             ))}
@@ -793,6 +802,18 @@ export function Pipeline() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={!!removeTargetId}
+        onOpenChange={(open) => !open && setRemoveTargetId(null)}
+        title="Remove from pipeline?"
+        description="This deletes the application record from the tracker. It can't be undone from here — the posting itself stays in Discovery."
+        confirmLabel="Remove"
+        destructive
+        onConfirm={async () => {
+          if (removeTargetId) await removeApplication(removeTargetId);
+        }}
+      />
     </PageLayout>
   );
 }

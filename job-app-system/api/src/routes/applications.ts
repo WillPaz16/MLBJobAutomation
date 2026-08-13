@@ -1,7 +1,8 @@
 import { Router } from "express";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { asyncHandler, HttpError } from "../asyncHandler.js";
-import { paginationSchema, updateApplicationSchema } from "../validation.js";
+import { paginationSchema, updateApplicationSchema, reorderApplicationsSchema } from "../validation.js";
 import { resolveTemplate, type TemplateContext } from "../answerTemplate.js";
 import { generateApplyAssistScript } from "../applyAssist/generateScript.js";
 
@@ -215,6 +216,44 @@ applicationsRouter.get(
   })
 );
 
+// Extracted so both the single-row PATCH below and the batch /reorder endpoint reproduce the
+// exact same two side effects on a real stage change: an ApplicationStageEvent row, and stamping
+// appliedAt (only if not already set) on first entry to APPLIED. Must run inside the caller's own
+// transaction (a `tx`, not the bare `prisma` client) so a batch reorder either writes every row's
+// side effects or none of them.
+async function applyApplicationUpdate(
+  tx: Prisma.TransactionClient,
+  existing: { id: string; stage: string; appliedAt: Date | null },
+  data: { stage?: string; order?: number; resumeDocId?: string | null; coverDocId?: string | null; notes?: string; appliedAt?: string }
+) {
+  const stageChanged = data.stage !== undefined && data.stage !== existing.stage;
+
+  const updated = await tx.application.update({
+    where: { id: existing.id },
+    data: {
+      ...data,
+      appliedAt: data.appliedAt
+        ? new Date(data.appliedAt)
+        : data.stage === "APPLIED" && !existing.appliedAt
+          ? new Date()
+          : undefined,
+    },
+  });
+
+  if (stageChanged) {
+    await tx.applicationStageEvent.create({
+      data: {
+        applicationId: existing.id,
+        fromStage: existing.stage,
+        toStage: data.stage as string,
+        source: "api",
+      },
+    });
+  }
+
+  return updated;
+}
+
 // Single choke point for writing ApplicationStageEvent rows on a real stage change (see the
 // model's doc comment in schema.prisma). appliedAt is also decided here, server-side, in the
 // same transaction — entering APPLIED sets it (only if not already set), and moving to any OTHER
@@ -229,36 +268,43 @@ applicationsRouter.patch(
     const existing = await prisma.application.findUnique({ where: { id: req.params.id } });
     if (!existing) throw new HttpError(404, "Application not found");
 
-    const stageChanged = data.stage !== undefined && data.stage !== existing.stage;
-
-    const application = await prisma.$transaction(async (tx) => {
-      const updated = await tx.application.update({
-        where: { id: req.params.id },
-        data: {
-          ...data,
-          appliedAt: data.appliedAt
-            ? new Date(data.appliedAt)
-            : data.stage === "APPLIED" && !existing.appliedAt
-              ? new Date()
-              : undefined,
-        },
-      });
-
-      if (stageChanged) {
-        await tx.applicationStageEvent.create({
-          data: {
-            applicationId: existing.id,
-            fromStage: existing.stage,
-            toStage: data.stage as string,
-            source: "api",
-          },
-        });
-      }
-
-      return updated;
-    });
+    const application = await prisma.$transaction(async (tx) => applyApplicationUpdate(tx, existing, data));
 
     res.json(application);
+  })
+);
+
+// v9 Phase 3 — batch persistence for Pipeline's drag/"Move to stage" actions. Replaces N
+// independent PATCHes (fired via Promise.all from the client) with one prisma.$transaction, so a
+// partial failure can't leave the server holding a subset of a reorder that the client then
+// reverts locally. Every entry whose stage actually changes gets the exact same
+// ApplicationStageEvent + appliedAt treatment as the single-row PATCH above, via the shared
+// applyApplicationUpdate helper — otherwise dragging a card into Applied would silently stop
+// recording history for the batch path.
+applicationsRouter.post(
+  "/reorder",
+  asyncHandler(async (req, res) => {
+    const { updates } = reorderApplicationsSchema.parse(req.body);
+
+    const ids = updates.map((u) => u.id);
+    const existingRows = await prisma.application.findMany({ where: { id: { in: ids } } });
+    if (existingRows.length !== ids.length) {
+      throw new HttpError(400, "One or more applications in the batch do not exist");
+    }
+    const existingById = new Map(existingRows.map((a) => [a.id, a]));
+
+    const applications = await prisma.$transaction(async (tx) => {
+      const results = [];
+      for (const update of updates) {
+        const existing = existingById.get(update.id)!;
+        results.push(
+          await applyApplicationUpdate(tx, existing, { stage: update.stage, order: update.order })
+        );
+      }
+      return results;
+    });
+
+    res.json(applications);
   })
 );
 
