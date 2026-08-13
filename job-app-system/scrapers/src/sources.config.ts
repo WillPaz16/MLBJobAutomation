@@ -40,12 +40,27 @@ export const greenhouseSources: { boardToken?: string; boardTokens?: string[]; o
   { boardToken: "hudl", organizationName: "Hudl" },
   // boards-api.greenhouse.io/v1/boards/catapultsports/jobs — 27 live jobs, curl-verified 2026-08-12.
   { boardToken: "catapultsports", organizationName: "Catapult Sports" },
+  // Quant trading firms, added per the non-MLB "data science" coverage-gap follow-up
+  // (2026-08-13). All curl-verified live with a real browser User-Agent before adding.
+  // boards-api.greenhouse.io/v1/boards/jumptrading/jobs — 102 live jobs.
+  { boardToken: "jumptrading", organizationName: "Jump Trading" },
+  // boards-api.greenhouse.io/v1/boards/akunacapital/jobs — 35 live jobs.
+  { boardToken: "akunacapital", organizationName: "Akuna Capital" },
+  // boards-api.greenhouse.io/v1/boards/imc/jobs — 164 live jobs (global board, not just US/quant
+  // roles — kept anyway since it's a directly-targeted quant firm, not a generic big-tech
+  // overlap board like the ones removed for simplify-new-grad).
+  { boardToken: "imc", organizationName: "IMC Trading" },
+  // boards-api.greenhouse.io/v1/boards/transmarketgroup/jobs — 17 live jobs.
+  { boardToken: "transmarketgroup", organizationName: "TransMarket Group" },
 ];
 
 // Lever: find an org's site slug from their careers page URL: jobs.lever.co/<site>.
 export const leverSources: { site: string; organizationName: string }[] = [
   { site: "redsox", organizationName: "Boston Red Sox" },
   { site: "sfgiants", organizationName: "San Francisco Giants" },
+  // api.lever.co/v0/postings/belvederetrading?mode=json — quant trading firm, curl-verified live
+  // 2026-08-13 (found via the "lever-jobs-container" anchor on belvederetrading.com/careers).
+  { site: "belvederetrading", organizationName: "Belvedere Trading" },
 ];
 
 // Workday: several MLB teams' front offices run on Workday-hosted career sites
@@ -244,6 +259,37 @@ export const teamPageSources: {
 // on all of it, and "blocked for curl" ≠ "blocked for Playwright" — only a block that survives
 // genuine browser navigation (a CAPTCHA/challenge page, or the page itself failing to load) is a
 // real dead end.
+
+// Non-MLB: quant trading firms investigated 2026-08-13 (per Will's Chicago/quant coverage-gap
+// note). Jump Trading, Akuna Capital, IMC Trading, TransMarket Group (Greenhouse) and Belvedere
+// Trading (Lever) are added above, curl-verified live. The rest are NOT genuine dead ends — they
+// need more investigation than a curl pass allows, so don't write them off as blocked:
+//   - Wolverine Trading (wolve.com/open-positions): runs on Pinpoint ATS
+//     (data-pinpoint-subdomain="wolve"), NOT one of this repo's 11 supported adapter platforms.
+//     Its JSON API is real and public — curl-verified live 2026-08-13:
+//     `curl -A "Mozilla/5.0..." https://wolve.pinpointhq.com/postings.json` returns real posting
+//     data (200, JSON body with job fields). Not a bot-detection dead end at all — just needs a
+//     new Pinpoint adapter written (out of scope for a config-only pass), or manual entry in the
+//     meantime via POST /api/postings/manual.
+//   - Peak6 (peak6.com/careers): landing page has no static job links; loads job data via a
+//     "ongig-embed" widget (d171fmx844et9o.cloudfront.net/peak6/2.0/ongig-embed.umd.js), which is
+//     a description-enhancement layer, not the underlying ATS — the real ATS behind it wasn't
+//     identified via curl alone (client-rendered). Needs Playwright network capture to find the
+//     real API before it can be added; not confirmed blocked.
+//   - Susquehanna / SIG (sig.com/careers): careers page returns 200 but no ATS platform signature
+//     (Greenhouse/Lever/Workday/etc.) found in the static HTML — likely client-rendered. Needs
+//     Playwright network capture to find the real API; not confirmed blocked.
+//   - DRW (drw.com/careers): Next.js app, static HTML has no ATS platform signature either.
+//     Needs Playwright network capture to find the real API; not confirmed blocked.
+//   - Optiver (optiver.com/join-us/jobs): a `boards-api.greenhouse.io/v1/boards/optiver/jobs`
+//     token exists and returns valid JSON (200) but with zero jobs (`{"jobs":[],"meta":
+//     {"total":0}}`) — the site's actual careers page shows no Greenhouse reference and looks
+//     client-rendered ("No results" search-box text present in static HTML), so that Greenhouse
+//     board may be stale/unused rather than the real source. Not added since it's unclear this is
+//     genuinely their live board; needs Playwright verification against the real careers page
+//     before trusting either the Greenhouse token or the site's own client-rendered listing.
+// None of these five hit a CAPTCHA or a real block — all are "needs more than curl," not dead
+// ends, per the escalation ladder above.
 
 // GitHub job-list repos (adapters/jobListRepo.ts) — community-maintained READMEs tracking
 // new-grad/internship tech/DS/quant/PM roles across 50+ companies per repo. Structurally
