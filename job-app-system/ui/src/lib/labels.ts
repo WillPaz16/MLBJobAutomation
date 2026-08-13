@@ -32,6 +32,14 @@ export const CATEGORY_FILTER_OPTIONS: { value: PostingCategory | "all"; label: s
   ...CATEGORY_OPTIONS,
 ];
 
+// Map form of CATEGORY_FILTER_OPTIONS (includes "all", unlike CATEGORY_LABELS above) — for the
+// Select-trigger `labels` prop (components/ui/select.tsx) wherever a category filter includes the
+// "all" option, so the closed trigger reads "All categories" rather than falling back to
+// prettifyLabel("all") = "All".
+export const CATEGORY_FILTER_LABELS: Record<string, string> = Object.fromEntries(
+  CATEGORY_FILTER_OPTIONS.map((o) => [o.value, o.label])
+);
+
 // Seniority is a fixed 4-value enum surfaced by the API (`Posting.seniority`) — same hardcoded
 // pattern as CATEGORY_LABELS/CATEGORY_FILTER_OPTIONS above rather than a facet-driven fetch.
 export const SENIORITY_LABELS: Record<string, string> = {
@@ -149,15 +157,6 @@ export const SOURCE_LABELS: Record<string, string> = {
   manual: "Manual",
 };
 
-// Generic fallback for labels that aren't a fixed enum with a curated map (e.g. Analytics'
-// by-stage/by-source breakdowns, where "source" keys are open-ended ATS platform strings) —
-// "team_page" -> "Team Page", "REVIEWING" -> "Reviewing". Prefer an explicit map (like
-// CATEGORY_LABELS above) wherever one exists; this is for the cases that don't have one.
-export function prettifyLabel(raw: string): string {
-  return raw
-    .toLowerCase()
-    .split(/[_\s]+/)
-    .filter(Boolean)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
-}
+// Moved to lib/utils.ts (components/ui/select.tsx needs it and shouldn't import app-domain
+// labels) — re-exported here so no existing call site in this codebase needs to change.
+export { prettifyLabel } from "./utils";

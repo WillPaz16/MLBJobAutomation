@@ -1,7 +1,7 @@
 import * as React from "react"
 import { Select as SelectPrimitive } from "@base-ui/react/select"
 
-import { cn } from "@/lib/utils"
+import { cn, prettifyLabel } from "@/lib/utils"
 import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from "lucide-react"
 
 const Select = SelectPrimitive.Root
@@ -16,13 +16,44 @@ function SelectGroup({ className, ...props }: SelectPrimitive.Group.Props) {
   )
 }
 
-function SelectValue({ className, ...props }: SelectPrimitive.Value.Props) {
+// Base UI's <Select.Value> does NOT mirror the selected <Select.Item>'s rendered children the way
+// Radix's does — with no `children` and no `items` on <Select.Root>, its label resolution
+// (resolveSelectedLabel -> stringifyAsLabel) falls all the way through to String(value), so a bare
+// <SelectValue /> renders the raw stored value ("all", "fit_desc", "ENTRY") instead of a label.
+// This shipped silently across every Select on Discovery/Documents/Pipeline because omitting
+// `children` looks correct — nothing errors, it just renders the wrong string.
+//
+// Fixed here, once, by defaulting `children` to a resolver function, so a bare <SelectValue /> can
+// never regress to a raw enum again — the failure mode was omission, so the fix has to make
+// omission safe. Callers pass `labels` for exact wording (pull from lib/labels.ts's *_LABELS
+// maps); prettifyLabel is a readable generic fallback, not a substitute for a real label map.
+//
+// Base UI checks function-children BEFORE its own placeholder logic, so the empty/no-selection
+// case must be handled inside this resolver rather than left to the `placeholder` prop alone.
+function SelectValue({
+  className,
+  labels,
+  placeholder,
+  children,
+  ...props
+}: Omit<SelectPrimitive.Value.Props, "children"> & {
+  labels?: Record<string, React.ReactNode>
+  children?: SelectPrimitive.Value.Props["children"]
+}) {
   return (
     <SelectPrimitive.Value
       data-slot="select-value"
       className={cn("flex flex-1 text-left", className)}
+      placeholder={placeholder}
       {...props}
-    />
+    >
+      {children ??
+        ((value: unknown) => {
+          if (value == null || value === "") return placeholder ?? null
+          const one = (v: unknown) => labels?.[String(v)] ?? prettifyLabel(String(v))
+          return Array.isArray(value) ? value.map(one).join(", ") : one(value)
+        })}
+    </SelectPrimitive.Value>
   )
 }
 

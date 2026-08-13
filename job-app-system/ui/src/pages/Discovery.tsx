@@ -52,6 +52,7 @@ const STATUSES: { value: "active" | "closed" | "all"; label: string }[] = [
   { value: "closed", label: "Closed only" },
   { value: "all", label: "All statuses" },
 ];
+const STATUS_LABELS = Object.fromEntries(STATUSES.map((s) => [s.value, s.label]));
 
 type SortOption = "discoveredAt_desc" | "discoveredAt_asc" | "postedAt_desc" | "postedAt_asc" | "fit_desc";
 
@@ -62,6 +63,7 @@ const SORTS: { value: SortOption; label: string }[] = [
   { value: "postedAt_desc", label: "Newest posted first" },
   { value: "postedAt_asc", label: "Oldest posted first" },
 ];
+const SORT_LABELS = Object.fromEntries(SORTS.map((s) => [s.value, s.label]));
 
 // Thresholds match api/src/fitScore.ts's fitTier boundaries exactly (Strong>=65, Good>=40,
 // Fair>=20, Weak<20) — the "or better" floor for each preset is that tier's own lower bound.
@@ -71,6 +73,12 @@ const MIN_FIT_OPTIONS: { value: string; label: string }[] = [
   { value: "40", label: "Good or better" },
   { value: "65", label: "Strong only" },
 ];
+const MIN_FIT_LABELS = Object.fromEntries(MIN_FIT_OPTIONS.map((o) => [o.value, o.label]));
+const CATEGORY_FILTER_LABELS = Object.fromEntries(CATEGORY_FILTER_OPTIONS.map((o) => [o.value, o.label]));
+const SENIORITY_FILTER_LABELS = Object.fromEntries(SENIORITY_FILTER_OPTIONS.map((o) => [o.value, o.label]));
+const WORK_MODE_FILTER_LABELS = Object.fromEntries(WORK_MODE_FILTER_OPTIONS.map((o) => [o.value, o.label]));
+const REGION_FILTER_LABELS = Object.fromEntries(REGION_FILTER_OPTIONS.map((o) => [o.value, o.label]));
+const INTERNSHIP_LABELS = Object.fromEntries(INTERNSHIP_FILTER_OPTIONS.map((o) => [o.value, o.label]));
 
 // Tier-based styling replaces the old numeric-threshold badge coloring now that the API returns
 // `fitTier` (Phase 2) — Strong/Good map to the same green/amber classes the app already used,
@@ -516,7 +524,7 @@ export function Discovery() {
                     onValueChange={(v) => setManualForm((f) => ({ ...f, category: (v as PostingCategory) ?? "OTHER" }))}
                   >
                     <SelectTrigger className="w-full">
-                      <SelectValue />
+                      <SelectValue labels={CATEGORY_FILTER_LABELS} />
                     </SelectTrigger>
                     <SelectContent>
                       {CATEGORY_FILTER_OPTIONS.filter((c) => c.value !== "all").map((c) => (
@@ -559,7 +567,7 @@ export function Discovery() {
           </Label>
           <Select value={filters.category} onValueChange={(v) => setFilter("category", v ?? "all")}>
             <SelectTrigger id="filter-category" className="w-full">
-              <SelectValue />
+              <SelectValue labels={CATEGORY_FILTER_LABELS} />
             </SelectTrigger>
             <SelectContent>
               {CATEGORY_FILTER_OPTIONS.map((c) => (
@@ -576,7 +584,7 @@ export function Discovery() {
           </Label>
           <Select value={filters.seniority} onValueChange={(v) => setFilter("seniority", v ?? "all")}>
             <SelectTrigger id="filter-seniority" className="w-full">
-              <SelectValue />
+              <SelectValue labels={SENIORITY_FILTER_LABELS} />
             </SelectTrigger>
             <SelectContent>
               {SENIORITY_FILTER_OPTIONS.map((s) => (
@@ -593,7 +601,7 @@ export function Discovery() {
           </Label>
           <Select value={filters.workMode} onValueChange={(v) => setFilter("workMode", v ?? "all")}>
             <SelectTrigger id="filter-work-mode" className="w-full">
-              <SelectValue />
+              <SelectValue labels={WORK_MODE_FILTER_LABELS} />
             </SelectTrigger>
             <SelectContent>
               {WORK_MODE_FILTER_OPTIONS.map((o) => (
@@ -610,7 +618,7 @@ export function Discovery() {
           </Label>
           <Select value={filters.region} onValueChange={(v) => setFilter("region", v ?? "all")}>
             <SelectTrigger id="filter-region" className="w-full">
-              <SelectValue />
+              <SelectValue labels={REGION_FILTER_LABELS} />
             </SelectTrigger>
             <SelectContent>
               {REGION_FILTER_OPTIONS.map((o) => (
@@ -627,7 +635,7 @@ export function Discovery() {
           </Label>
           <Select value={filters.isInternship} onValueChange={(v) => setFilter("isInternship", v ?? "all")}>
             <SelectTrigger id="filter-internship" className="w-full">
-              <SelectValue />
+              <SelectValue labels={INTERNSHIP_LABELS} />
             </SelectTrigger>
             <SelectContent>
               {INTERNSHIP_FILTER_OPTIONS.map((o) => (
@@ -668,7 +676,7 @@ export function Discovery() {
           </Label>
           <Select value={filters.organization} onValueChange={(v) => setFilter("organization", v ?? "all")}>
             <SelectTrigger id="filter-organization" className="w-full">
-              <SelectValue />
+              <SelectValue>{(v: string) => (v === "all" ? "All teams / companies" : v)}</SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All teams / companies</SelectItem>
@@ -686,7 +694,7 @@ export function Discovery() {
           </Label>
           <Select value={filters.status} onValueChange={(v) => setFilter("status", v ?? "active")}>
             <SelectTrigger id="filter-status" className="w-full">
-              <SelectValue />
+              <SelectValue labels={STATUS_LABELS} />
             </SelectTrigger>
             <SelectContent>
               {STATUSES.map((s) => (
@@ -703,7 +711,7 @@ export function Discovery() {
           </Label>
           <Select value={filters.sort} onValueChange={(v) => setFilter("sort", v ?? "discoveredAt_desc")}>
             <SelectTrigger id="filter-sort" className="w-full">
-              <SelectValue />
+              <SelectValue labels={SORT_LABELS} />
             </SelectTrigger>
             <SelectContent>
               {SORTS.map((s) => (
@@ -720,7 +728,7 @@ export function Discovery() {
           </Label>
           <Select value={filters.minFit} onValueChange={(v) => setFilter("minFit", v ?? "none")}>
             <SelectTrigger id="filter-min-fit" className="w-full">
-              <SelectValue />
+              <SelectValue labels={MIN_FIT_LABELS} />
             </SelectTrigger>
             <SelectContent>
               {MIN_FIT_OPTIONS.map((o) => (

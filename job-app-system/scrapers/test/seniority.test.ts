@@ -14,10 +14,19 @@ describe("classifySeniority", () => {
     expect(classifySeniority("Lead Analyst")).toBe("SENIOR");
   });
 
-  it("classifies intern/entry-track titles as ENTRY", () => {
-    expect(classifySeniority("Data Analyst Intern")).toBe("ENTRY");
+  it("classifies entry-track (non-internship) titles as ENTRY", () => {
     expect(classifySeniority("Baseball Operations Coordinator")).toBe("ENTRY");
     expect(classifySeniority("Marketing Assistant")).toBe("ENTRY");
+  });
+
+  it("classifies internships as null, not ENTRY — isInternship is a separate axis", () => {
+    expect(classifySeniority("Data Analyst Intern")).toBeNull();
+    expect(classifySeniority("Software Engineering Internship")).toBeNull();
+    expect(classifySeniority("Summer 2027 Marketing Co-op")).toBeNull();
+  });
+
+  it("an internship title with an earlier EXECUTIVE/SENIOR signal still wins that bucket", () => {
+    expect(classifySeniority("Senior Fellow Program Intern")).toBe("SENIOR");
   });
 
   it("classifies 'new grad' phrasing as ENTRY", () => {

@@ -141,7 +141,7 @@ export function Documents() {
                   <Label className="mb-1">Kind</Label>
                   <Select value={kind} onValueChange={(v) => setKind(v as "resume" | "cover_letter")}>
                     <SelectTrigger className="w-full">
-                      <SelectValue />
+                      <SelectValue labels={{ resume: "Resume", cover_letter: "Cover letter" }} />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="resume">Resume</SelectItem>

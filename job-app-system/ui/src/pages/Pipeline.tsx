@@ -34,7 +34,7 @@ import type { Application, ApplicationStage, Document } from "../api/types";
 import { htmlToPlainText, relativeTime } from "@/lib/utils";
 import { PrepContextPanel } from "@/components/PrepContextPanel";
 import { useEntrance } from "@/lib/useEntrance";
-import { CATEGORY_FILTER_OPTIONS, CATEGORY_LABELS, SOURCE_LABELS, STAGE_LABELS } from "@/lib/labels";
+import { CATEGORY_FILTER_LABELS, CATEGORY_FILTER_OPTIONS, CATEGORY_LABELS, SOURCE_LABELS, STAGE_LABELS } from "@/lib/labels";
 import { ErrorState } from "@/components/states/ErrorState";
 import { EmptyState } from "@/components/states/EmptyState";
 import { PageHeader, PageLayout } from "@/components/PageLayout";
@@ -116,7 +116,12 @@ function DocPicker({
           className="mt-0.5 w-full text-xs"
           onPointerDown={(e) => e.stopPropagation()}
         >
-          <SelectValue placeholder="— none —" />
+          {/* Explicit children, not `labels`: values here are Document ids (cuids), not a fixed
+              enum, so the trigger must look up the doc's own label rather than fall back to
+              prettifyLabel(id), which would render a garbled cuid string. */}
+          <SelectValue placeholder="— none —">
+            {(v: string) => (v === "__none__" ? "— none —" : (docs.find((d) => d.id === v)?.label ?? v))}
+          </SelectValue>
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="__none__">— none —</SelectItem>
@@ -672,7 +677,7 @@ export function Pipeline() {
       <div className="mb-4 flex items-center gap-3">
         <Select value={categoryFilter} onValueChange={(v) => setCategoryFilter(v ?? "all")}>
           <SelectTrigger className="w-56">
-            <SelectValue />
+            <SelectValue labels={CATEGORY_FILTER_LABELS} />
           </SelectTrigger>
           <SelectContent>
             {CATEGORY_FILTER_OPTIONS.map((c) => (

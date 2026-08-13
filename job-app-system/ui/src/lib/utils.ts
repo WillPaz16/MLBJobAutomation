@@ -5,6 +5,20 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+// Generic fallback for labels that aren't a fixed enum with a curated map (e.g. Analytics'
+// by-stage/by-source breakdowns, and the Select-trigger label resolver in components/ui/select.tsx)
+// — "team_page" -> "Team Page", "REVIEWING" -> "Reviewing". Prefer an explicit map wherever one
+// exists; this is for the cases that don't have one. Lives here (not lib/labels.ts) because
+// components/ui/* already imports from lib/utils and shouldn't reach into app-domain labels.
+export function prettifyLabel(raw: string): string {
+  return raw
+    .toLowerCase()
+    .split(/[_\s]+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ")
+}
+
 // Postings' description text comes from external ATS APIs as raw HTML (Greenhouse, BambooHR,
 // Workday, Dayforce, TeamWork Online all store it that way) — rendering it as plain text left
 // literal tags and entities (&amp;, &nbsp;) visible. DOMParser here is safe against XSS: the
