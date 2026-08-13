@@ -121,6 +121,11 @@ export const createOrgProfileSchema = z.object({
 
 export const updateOrgProfileSchema = createOrgProfileSchema.partial();
 
+// Express query params always arrive as strings; z.coerce.boolean() is Boolean(str), which makes
+// "false" true. Use an explicit enum instead, matching the pattern postings.ts already handles
+// inline for its own boolean params.
+export const booleanQuerySchema = z.enum(["true", "false"]).transform((v) => v === "true");
+
 // Optional filters for GET /api/analytics/summary (and reused by /funnel where sensible).
 // All-time/no-filter by default so existing callers (Home.tsx, pre-existing tests) that pass no
 // query params are unaffected.
@@ -128,7 +133,7 @@ export const analyticsQuerySchema = z.object({
   from: z.string().datetime().optional(),
   to: z.string().datetime().optional(),
   category: postingCategorySchema.optional(),
-  isMlbTeam: z.coerce.boolean().optional(),
+  isMlbTeam: booleanQuerySchema.optional(),
 });
 
 export const timeseriesQuerySchema = z.object({

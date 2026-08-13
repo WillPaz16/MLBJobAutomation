@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -26,8 +27,20 @@ export function ConfirmDialog({
   description?: string;
   confirmLabel?: string;
   destructive?: boolean;
-  onConfirm: () => void;
+  onConfirm: () => void | Promise<void>;
 }) {
+  const [confirming, setConfirming] = useState(false);
+
+  async function handleConfirm() {
+    setConfirming(true);
+    try {
+      await onConfirm();
+      onOpenChange(false);
+    } finally {
+      setConfirming(false);
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -39,17 +52,15 @@ export function ConfirmDialog({
           {/* Cancel comes first in markup order and carries no autoFocus override, so it's the
               default focus target — the non-destructive action should be what a stray Enter
               key lands on, not the destructive one. */}
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={confirming}>
             Cancel
           </Button>
           <Button
             variant={destructive ? "destructive" : "default"}
-            onClick={() => {
-              onConfirm();
-              onOpenChange(false);
-            }}
+            onClick={handleConfirm}
+            disabled={confirming}
           >
-            {confirmLabel}
+            {confirming ? "Working…" : confirmLabel}
           </Button>
         </DialogFooter>
       </DialogContent>

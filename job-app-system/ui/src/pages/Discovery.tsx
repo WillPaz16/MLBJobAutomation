@@ -48,6 +48,7 @@ import { Pagination } from "@/components/Pagination";
 import { ErrorState } from "@/components/states/ErrorState";
 import { EmptyState } from "@/components/states/EmptyState";
 import { NotificationBanner } from "@/components/NotificationBanner";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { FilterField } from "@/components/FilterField";
 import { PageLayout, PageHeader } from "@/components/PageLayout";
 import { Button } from "@/components/ui/button";
@@ -431,6 +432,7 @@ export function Discovery() {
   const [saveName, setSaveName] = useState("");
   const [saveAsDefault, setSaveAsDefault] = useState(false);
   const [savingSearch, setSavingSearch] = useState(false);
+  const [confirmDeleteSearch, setConfirmDeleteSearch] = useState<SavedSearch | null>(null);
   const defaultAppliedRef = useRef(false);
 
   function loadSavedSearches() {
@@ -1143,7 +1145,7 @@ export function Discovery() {
                     title="Delete"
                     onClick={(e) => {
                       e.stopPropagation();
-                      deleteSavedSearch(saved);
+                      setConfirmDeleteSearch(saved);
                     }}
                     className="rounded p-1 hover:bg-muted-foreground/20"
                   >
@@ -1155,6 +1157,18 @@ export function Discovery() {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+
+      <ConfirmDialog
+        open={!!confirmDeleteSearch}
+        onOpenChange={(open) => !open && setConfirmDeleteSearch(null)}
+        title="Delete saved view?"
+        description={confirmDeleteSearch ? `"${confirmDeleteSearch.name}" can't be recovered after this.` : undefined}
+        confirmLabel="Delete"
+        destructive
+        onConfirm={async () => {
+          if (confirmDeleteSearch) await deleteSavedSearch(confirmDeleteSearch);
+        }}
+      />
 
       <Dialog open={saveDialogOpen} onOpenChange={setSaveDialogOpen}>
         <DialogContent>

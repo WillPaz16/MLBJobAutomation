@@ -46,6 +46,22 @@ describe("GET /api/analytics/summary", () => {
     const res2 = await request(app).get("/api/analytics/summary?isMlbTeam=true");
     expect(res2.body.total).toBe(1);
   });
+
+  it("isMlbTeam=false returns only the non-MLB application, not its inverse", async () => {
+    const mlbPosting = await createPosting({ category: "BASEBALL_OPS", isMlbTeam: true });
+    const dsPosting = await createPosting({ category: "DATA_SCIENCE", isMlbTeam: false });
+    await createApplication(mlbPosting.id, { stage: "INTERVIEW" });
+    await createApplication(dsPosting.id, { stage: "APPLIED" });
+
+    const res = await request(app).get("/api/analytics/summary?isMlbTeam=false");
+    expect(res.body.total).toBe(1);
+    expect(res.body.byStage).toEqual({ APPLIED: 1 });
+  });
+
+  it("rejects a non-boolean isMlbTeam value with 400", async () => {
+    const res = await request(app).get("/api/analytics/summary?isMlbTeam=notabool");
+    expect(res.status).toBe(400);
+  });
 });
 
 describe("GET /api/analytics/timeseries", () => {
@@ -149,6 +165,25 @@ describe("GET /api/analytics/funnel", () => {
 
     const res = await request(app).get("/api/analytics/funnel");
     expect(res.body.conversion.FOUND).toBeNull();
+  });
+
+  it("isMlbTeam=false filters to only the non-MLB application, not its inverse", async () => {
+    const mlbPosting = await createPosting({ category: "BASEBALL_OPS", isMlbTeam: true });
+    const dsPosting = await createPosting({ category: "DATA_SCIENCE", isMlbTeam: false });
+    const mlbApp = await createApplication(mlbPosting.id, { stage: "INTERVIEW" });
+    await createStageEvent(mlbApp.id, { fromStage: null, toStage: "INTERVIEW" });
+    const dsApp = await createApplication(dsPosting.id, { stage: "FOUND" });
+    await createStageEvent(dsApp.id, { fromStage: null, toStage: "FOUND" });
+
+    const res = await request(app).get("/api/analytics/funnel?isMlbTeam=false");
+    expect(res.body.sampleSizes.totalApplications).toBe(1);
+    expect(res.body.reached.FOUND).toBe(1);
+    expect(res.body.reached.INTERVIEW).toBeUndefined();
+  });
+
+  it("rejects a non-boolean isMlbTeam value with 400", async () => {
+    const res = await request(app).get("/api/analytics/funnel?isMlbTeam=notabool");
+    expect(res.status).toBe(400);
   });
 
   it("computes daysInStage only across consecutive api-sourced events, excluding backfill", async () => {

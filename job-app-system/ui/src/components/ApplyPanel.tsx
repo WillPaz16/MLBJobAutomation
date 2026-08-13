@@ -295,37 +295,19 @@ export function ApplyPanel({ applicationId }: { applicationId: string }) {
   );
 }
 
-// v8 Phase 6 — the apply-assist helper install/copy affordances. Three layers, in the plan's
+// v8 Phase 6 — the apply-assist helper install/copy affordances. Two layers, in the plan's
 // deliberate reliability order (in-app copy panel above is layer 1 and already the floor):
 //   2. Userscript (Violentmonkey/Tampermonkey) — the main deliverable, served fresh per-application
 //      by the API with identity data inlined server-side at request time (no runtime callback to
 //      localhost from the page it runs on).
-//   3. Bookmarklet — a convenience wrapper around the exact same script text, documented as
-//      possibly CSP-blocked, never the primary path.
+// A bookmarklet layer was tried and removed: React 19 refuses to render `javascript:` URLs in
+// `href` (an XSS-prevention measure), so it never actually worked, and it was the least-reliable
+// layer anyway (blocked by CSP on most real ATS sites). The userscript above is the real fallback.
 // Everything here is honest about the ceiling: Greenhouse/Lever/Ashby-style plain HTML forms fill
 // well, iCIMS is fair, Workday's custom (non-native) dropdowns mostly won't fill and fall back to a
 // flagged/skipped highlight — never oversell "autofills everything."
 function ApplyAssistHelperSection({ applicationId }: { applicationId: string }) {
   const scriptUrl = api.applications.applyAssistScriptUrl(applicationId);
-  const [bookmarkletHref, setBookmarkletHref] = useState<string | null>(null);
-  const [bookmarkletError, setBookmarkletError] = useState<string | null>(null);
-
-  async function buildBookmarklet() {
-    setBookmarkletError(null);
-    try {
-      const res = await fetch(scriptUrl);
-      if (!res.ok) throw new Error("Failed to fetch script");
-      const scriptText = await res.text();
-      // A bookmarklet has to be a single `javascript:` URI with no UserScript metadata block (the
-      // browser executes it directly on click, in the PAGE's own world — unlike a userscript
-      // manager, there's no isolated world here, which is exactly why this layer can be blocked by
-      // a strict page CSP and is never positioned as the primary path).
-      const body = scriptText.replace(/\/\/ ==UserScript==[\s\S]*?\/\/ ==\/UserScript==\n*/, "");
-      setBookmarkletHref(`javascript:${encodeURIComponent(body)}`);
-    } catch {
-      setBookmarkletError("Couldn't build the bookmarklet — try the userscript install instead.");
-    }
-  }
 
   async function copyScriptUrl() {
     try {
@@ -352,7 +334,7 @@ function ApplyAssistHelperSection({ applicationId }: { applicationId: string }) 
 
       <div className="mt-2 space-y-2">
         <div>
-          <div className="font-medium text-foreground">1. Userscript (recommended)</div>
+          <div className="font-medium text-foreground">Userscript (recommended)</div>
           <p className="text-muted-foreground">
             Install a userscript manager (
             <a
@@ -372,35 +354,6 @@ function ApplyAssistHelperSection({ applicationId }: { applicationId: string }) 
               Open apply-assist script
             </a>
             <CopyButton text={`${window.location.origin}${scriptUrl}`} label="script URL" />
-          </div>
-        </div>
-
-        <div>
-          <div className="font-medium text-foreground">2. Bookmarklet (fallback)</div>
-          <p className="text-muted-foreground">
-            A convenience wrapper around the same script as a browser-bar bookmark. Many ATS pages'
-            Content Security Policy blocks bookmarklets entirely — if clicking it does nothing, use
-            the userscript above instead.
-          </p>
-          <div className="mt-1">
-            {bookmarkletHref ? (
-              <a
-                href={bookmarkletHref}
-                onClick={(e) => {
-                  e.preventDefault();
-                  toast.info("Drag this text to your bookmarks bar instead of clicking it.");
-                }}
-                className="cursor-grab text-primary hover:underline"
-                draggable
-              >
-                Apply Assist (drag me to bookmarks bar)
-              </a>
-            ) : (
-              <Button size="sm" variant="outline" onClick={buildBookmarklet}>
-                Build bookmarklet
-              </Button>
-            )}
-            {bookmarkletError && <p className="mt-1 text-destructive">{bookmarkletError}</p>}
           </div>
         </div>
 

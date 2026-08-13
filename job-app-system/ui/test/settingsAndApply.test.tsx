@@ -109,6 +109,39 @@ describe("Settings page", () => {
     expect(within(container).getByText("No")).toBeInTheDocument();
     expect(within(container).getByText("Declined")).toBeInTheDocument();
   });
+
+  it("Education entry delete requires confirmation before calling the API", async () => {
+    identityGet.mockResolvedValueOnce(null);
+    const { api } = await import("../src/api/client");
+    (api.identity.education.list as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: "edu-1", school: "State U", degree: "BS", fieldOfStudy: "CS", startDate: "2018", endDate: "2022", gpa: "3.9", isPrimary: true },
+    ]);
+    const educationRemove = api.identity.education.remove as ReturnType<typeof vi.fn>;
+    educationRemove.mockClear();
+    educationRemove.mockResolvedValueOnce(undefined);
+
+    const user = userEvent.setup();
+    renderWithRouter(<Settings />);
+    await waitFor(() => expect(screen.getByText("Save identity")).toBeInTheDocument());
+    await user.click(screen.getByRole("tab", { name: "Education" }));
+    await waitFor(() => expect(screen.getByText("State U")).toBeInTheDocument());
+
+    // Clicking the delete icon opens a confirmation dialog rather than deleting immediately.
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+    expect(await screen.findByText("Delete education entry?")).toBeInTheDocument();
+    expect(educationRemove).not.toHaveBeenCalled();
+
+    // Cancel leaves the entry alone.
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByText("Delete education entry?")).not.toBeInTheDocument());
+    expect(educationRemove).not.toHaveBeenCalled();
+
+    // Confirming calls the API.
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(educationRemove).toHaveBeenCalledWith("edu-1"));
+  });
 });
 
 describe("ApplyPanel", () => {

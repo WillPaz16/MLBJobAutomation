@@ -243,7 +243,9 @@ export function Documents() {
         description="This removes the document record from the tracker. It can't be undone, and it will fail if the document is still attached to an application."
         confirmLabel="Delete"
         destructive
-        onConfirm={() => confirmDeleteId && removeDocument(confirmDeleteId)}
+        onConfirm={async () => {
+          if (confirmDeleteId) await removeDocument(confirmDeleteId);
+        }}
       />
     </PageLayout>
   );

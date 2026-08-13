@@ -13,6 +13,7 @@ import type {
   TonePreset,
 } from "../api/types";
 import { PageHeader, PageLayout } from "@/components/PageLayout";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -334,6 +335,7 @@ function EducationTab() {
   const [editingId, setEditingId] = useState<string | "new" | null>(null);
   const [draft, setDraft] = useState<Partial<EducationEntry>>(emptyEducationDraft());
   const [saving, setSaving] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   function load() {
     setLoading(true);
@@ -371,6 +373,7 @@ function EducationTab() {
   async function remove(id: string) {
     try {
       await api.identity.education.remove(id);
+      toast.success("Education entry deleted");
       load();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Failed to delete education entry");
@@ -400,7 +403,7 @@ function EducationTab() {
               <Button size="sm" variant="outline" onClick={() => startEdit(entry)}>
                 Edit
               </Button>
-              <Button size="icon-xs" variant="ghost" onClick={() => remove(entry.id)} aria-label="Delete">
+              <Button size="icon-xs" variant="ghost" onClick={() => setConfirmDeleteId(entry.id)} aria-label="Delete">
                 <Trash2 className="size-4" />
               </Button>
             </div>
@@ -455,6 +458,18 @@ function EducationTab() {
           <Plus className="size-4" /> Add education
         </Button>
       )}
+
+      <ConfirmDialog
+        open={!!confirmDeleteId}
+        onOpenChange={(open) => !open && setConfirmDeleteId(null)}
+        title="Delete education entry?"
+        description="This can't be undone."
+        confirmLabel="Delete"
+        destructive
+        onConfirm={async () => {
+          if (confirmDeleteId) await remove(confirmDeleteId);
+        }}
+      />
     </div>
   );
 }
@@ -478,6 +493,8 @@ function AnswersTab() {
     { questionKey: "", answer: "", snippetId: null }
   );
   const [savingOverride, setSavingOverride] = useState(false);
+  const [confirmDeleteSnippetId, setConfirmDeleteSnippetId] = useState<string | null>(null);
+  const [confirmDeleteOverrideId, setConfirmDeleteOverrideId] = useState<string | null>(null);
 
   function loadSnippets() {
     setLoading(true);
@@ -526,6 +543,7 @@ function AnswersTab() {
   async function removeSnippet(id: string) {
     try {
       await api.answers.snippets.remove(id);
+      toast.success("Answer snippet deleted");
       loadSnippets();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Failed to delete snippet");
@@ -556,6 +574,7 @@ function AnswersTab() {
   async function removeOverride(id: string) {
     try {
       await api.answers.overrides.remove(id);
+      toast.success("Override deleted");
       setOverrides((prev) => prev.filter((o) => o.id !== id));
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Failed to delete override");
@@ -591,7 +610,7 @@ function AnswersTab() {
                     <Button size="sm" variant="outline" onClick={() => startEdit(s)}>
                       Edit
                     </Button>
-                    <Button size="icon-xs" variant="ghost" onClick={() => removeSnippet(s.id)} aria-label="Delete">
+                    <Button size="icon-xs" variant="ghost" onClick={() => setConfirmDeleteSnippetId(s.id)} aria-label="Delete">
                       <Trash2 className="size-4" />
                     </Button>
                   </div>
@@ -662,7 +681,7 @@ function AnswersTab() {
                       <div className="font-medium text-foreground">{o.questionKey}</div>
                       <p className="text-sm text-muted-foreground">{o.answer}</p>
                     </div>
-                    <Button size="icon-xs" variant="ghost" onClick={() => removeOverride(o.id)} aria-label="Delete">
+                    <Button size="icon-xs" variant="ghost" onClick={() => setConfirmDeleteOverrideId(o.id)} aria-label="Delete">
                       <Trash2 className="size-4" />
                     </Button>
                   </CardContent>
@@ -692,6 +711,29 @@ function AnswersTab() {
           )}
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={!!confirmDeleteSnippetId}
+        onOpenChange={(open) => !open && setConfirmDeleteSnippetId(null)}
+        title="Delete answer snippet?"
+        description="This can't be undone."
+        confirmLabel="Delete"
+        destructive
+        onConfirm={async () => {
+          if (confirmDeleteSnippetId) await removeSnippet(confirmDeleteSnippetId);
+        }}
+      />
+      <ConfirmDialog
+        open={!!confirmDeleteOverrideId}
+        onOpenChange={(open) => !open && setConfirmDeleteOverrideId(null)}
+        title="Delete override?"
+        description="This can't be undone."
+        confirmLabel="Delete"
+        destructive
+        onConfirm={async () => {
+          if (confirmDeleteOverrideId) await removeOverride(confirmDeleteOverrideId);
+        }}
+      />
     </div>
   );
 }
@@ -716,6 +758,8 @@ function ToneOrgsTab() {
   const [orgEditingId, setOrgEditingId] = useState<string | "new" | null>(null);
   const [orgDraft, setOrgDraft] = useState<Partial<OrgProfile>>(emptyOrgDraft());
   const [saving, setSaving] = useState(false);
+  const [confirmDeleteToneId, setConfirmDeleteToneId] = useState<string | null>(null);
+  const [confirmDeleteOrgId, setConfirmDeleteOrgId] = useState<string | null>(null);
 
   function load() {
     setLoading(true);
@@ -747,6 +791,7 @@ function ToneOrgsTab() {
   async function removeTone(id: string) {
     try {
       await api.tonePresets.remove(id);
+      toast.success("Tone preset deleted");
       load();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Failed to delete tone preset");
@@ -771,6 +816,7 @@ function ToneOrgsTab() {
   async function removeOrg(id: string) {
     try {
       await api.orgProfiles.remove(id);
+      toast.success("Org profile deleted");
       load();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Failed to delete org profile");
@@ -806,7 +852,7 @@ function ToneOrgsTab() {
                   >
                     Edit
                   </Button>
-                  <Button size="icon-xs" variant="ghost" onClick={() => removeTone(t.id)} aria-label="Delete">
+                  <Button size="icon-xs" variant="ghost" onClick={() => setConfirmDeleteToneId(t.id)} aria-label="Delete">
                     <Trash2 className="size-4" />
                   </Button>
                 </div>
@@ -881,7 +927,7 @@ function ToneOrgsTab() {
                   >
                     Edit
                   </Button>
-                  <Button size="icon-xs" variant="ghost" onClick={() => removeOrg(o.id)} aria-label="Delete">
+                  <Button size="icon-xs" variant="ghost" onClick={() => setConfirmDeleteOrgId(o.id)} aria-label="Delete">
                     <Trash2 className="size-4" />
                   </Button>
                 </div>
@@ -948,6 +994,29 @@ function ToneOrgsTab() {
           )}
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={!!confirmDeleteToneId}
+        onOpenChange={(open) => !open && setConfirmDeleteToneId(null)}
+        title="Delete tone preset?"
+        description="This can't be undone."
+        confirmLabel="Delete"
+        destructive
+        onConfirm={async () => {
+          if (confirmDeleteToneId) await removeTone(confirmDeleteToneId);
+        }}
+      />
+      <ConfirmDialog
+        open={!!confirmDeleteOrgId}
+        onOpenChange={(open) => !open && setConfirmDeleteOrgId(null)}
+        title="Delete org profile?"
+        description="This can't be undone."
+        confirmLabel="Delete"
+        destructive
+        onConfirm={async () => {
+          if (confirmDeleteOrgId) await removeOrg(confirmDeleteOrgId);
+        }}
+      />
     </div>
   );
 }

@@ -158,9 +158,9 @@ export const api = {
     remove: (id: string) => request<void>(`/applications/${id}`, { method: "DELETE" }),
     prepContext: (id: string) => request<PrepContext>(`/applications/${id}/prep-context`),
     applyPack: (id: string) => request<ApplyPack>(`/applications/${id}/apply-pack`),
-    // Not fetched via `request()` — this is a plain URL for a <a href>/download link and for
-    // building the bookmarklet client-side; the browser (or the user's userscript manager) loads
-    // it directly, same-origin, same allowlisted-CORS story as documents.fileUrl above.
+    // Not fetched via `request()` — this is a plain URL for a <a href>/download link; the browser
+    // (or the user's userscript manager) loads it directly, same-origin, same allowlisted-CORS
+    // story as documents.fileUrl above.
     applyAssistScriptUrl: (id: string) => `/api/applications/${id}/apply-assist-script`,
   },
   documents: {
