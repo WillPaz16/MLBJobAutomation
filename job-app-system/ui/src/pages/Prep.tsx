@@ -14,6 +14,7 @@ import { ErrorState } from "@/components/states/ErrorState";
 import { EmptyState } from "@/components/states/EmptyState";
 import { PageHeader, PageLayout } from "@/components/PageLayout";
 import { PrepContextPanel } from "@/components/PrepContextPanel";
+import { ApplyPanel } from "@/components/ApplyPanel";
 import { useEntrance } from "@/lib/useEntrance";
 
 const STALE_AFTER_DAYS = 7;
@@ -156,8 +157,9 @@ export function Prep() {
                     {copiedId === app.id ? "Copied — now attach on Pipeline" : "Copy prep prompt"}
                   </Button>
                 </CardContent>
-                <CardContent className="pt-0">
+                <CardContent className="space-y-2 pt-0">
                   <PrepContextPanel applicationId={app.id} defaultOpen={false} />
+                  <ApplyPanel applicationId={app.id} />
                 </CardContent>
               </Card>
             );

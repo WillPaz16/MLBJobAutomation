@@ -33,6 +33,7 @@ import { api } from "../api/client";
 import type { Application, ApplicationStage, Document } from "../api/types";
 import { htmlToPlainText, relativeTime } from "@/lib/utils";
 import { PrepContextPanel } from "@/components/PrepContextPanel";
+import { ApplyPanel } from "@/components/ApplyPanel";
 import { useEntrance } from "@/lib/useEntrance";
 import { CATEGORY_FILTER_LABELS, CATEGORY_FILTER_OPTIONS, CATEGORY_LABELS, SOURCE_LABELS, STAGE_LABELS } from "@/lib/labels";
 import { ErrorState } from "@/components/states/ErrorState";
@@ -774,7 +775,10 @@ export function Pipeline() {
             )}
           </div>
           {detailApplication && (
-            <PrepContextPanel applicationId={detailApplication.id} defaultOpen={false} />
+            <>
+              <PrepContextPanel applicationId={detailApplication.id} defaultOpen={false} />
+              <ApplyPanel applicationId={detailApplication.id} />
+            </>
           )}
           <Textarea
             value={notesDraft}

@@ -1,4 +1,4 @@
-import { BarChart3, ClipboardList, FileText, Home as HomeIcon, ListChecks, Menu, Search, Target } from "lucide-react";
+import { BarChart3, ClipboardList, FileText, Home as HomeIcon, ListChecks, Menu, Search, Settings as SettingsIcon, Target } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,6 +17,7 @@ const links = [
   { to: "/documents", label: "Documents", icon: FileText },
   { to: "/analytics", label: "Analytics", icon: BarChart3 },
   { to: "/compatibility", label: "Compatibility", icon: Target },
+  { to: "/settings", label: "Settings", icon: SettingsIcon },
 ];
 
 function linkClass({ isActive }: { isActive: boolean }) {

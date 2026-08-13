@@ -86,13 +86,133 @@ export interface DocumentDetail extends Document {
   usedBy: DocumentUsage[];
 }
 
+// A single resolved answer entry — see api/src/routes/applications.ts's computeResolvedAnswers.
+export interface ResolvedAnswer {
+  snippetId: string | null;
+  category: string | null;
+  question: string | null;
+  questionKey: string | null;
+  source: "snippet" | "override";
+  text: string;
+  unresolved: string[];
+}
+
 // GET /api/applications/:id/prep-context response shape.
 export interface PrepContext {
   application: Application;
   orgProfile: { id: string; organizationName: string; notes: string | null; preferredToneId: string | null } | null;
   tonePreset: { id: string; name: string; guidance: string; isDefault: boolean } | null;
   resumeBullets: ResumeBullet[];
+  resolvedAnswers: ResolvedAnswer[];
 }
+
+// GET /api/applications/:id/apply-pack response shape — the only endpoint that returns
+// ApplicantIdentity PII (see CLAUDE.md / v8 Phase 4's two-sensitivity-levels note).
+export interface ApplyPack {
+  application: Application;
+  identity: ApplicantIdentity | null;
+  resolvedAnswers: ResolvedAnswer[];
+}
+
+export interface EducationEntry {
+  id: string;
+  applicantIdentityId: string;
+  school: string | null;
+  degree: string | null;
+  fieldOfStudy: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  gpa: string | null;
+  isPrimary: boolean;
+}
+
+export interface ApplicantIdentity {
+  id: string;
+  legalFirstName: string | null;
+  legalMiddleName: string | null;
+  legalLastName: string | null;
+  preferredName: string | null;
+  email: string | null;
+  phone: string | null;
+  addressStreet: string | null;
+  addressCity: string | null;
+  addressState: string | null;
+  addressZip: string | null;
+  addressCountry: string | null;
+  dateOfBirth: string | null;
+  requiresSponsorship: boolean | null;
+  authorizedToWorkUs: boolean | null;
+  genderIdentityCode: string | null;
+  genderIdentityLabel: string | null;
+  raceEthnicityCode: string | null;
+  raceEthnicityLabel: string | null;
+  disabilityStatusCode: string | null;
+  disabilityStatusLabel: string | null;
+  veteranStatusCode: string | null;
+  veteranStatusLabel: string | null;
+  linkedinUrl: string | null;
+  portfolioUrl: string | null;
+  githubUrl: string | null;
+  otherUrl: string | null;
+  updatedAt: string;
+  education?: EducationEntry[];
+}
+
+// Reuses the PUT body shape — every field optional/nullable, matching putApplicantIdentitySchema.
+export type ApplicantIdentityInput = Partial<Omit<ApplicantIdentity, "id" | "updatedAt" | "education">>;
+
+export type EducationEntryInput = Partial<Omit<EducationEntry, "id" | "applicantIdentityId">>;
+
+export interface AnswerSnippet {
+  id: string;
+  category: string;
+  question: string;
+  template: string;
+  tags: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type AnswerSnippetInput = Partial<Omit<AnswerSnippet, "id" | "createdAt" | "updatedAt">>;
+
+export interface AnswerOverride {
+  id: string;
+  applicationId: string;
+  questionKey: string;
+  answer: string;
+  snippetId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type AnswerOverrideInput = {
+  applicationId: string;
+  questionKey: string;
+  answer: string;
+  snippetId?: string | null;
+};
+
+export interface TonePreset {
+  id: string;
+  name: string;
+  guidance: string;
+  isDefault: boolean;
+}
+
+export type TonePresetInput = Partial<Omit<TonePreset, "id">>;
+
+export interface OrgProfile {
+  id: string;
+  organizationName: string;
+  notes: string | null;
+  preferredToneId: string | null;
+  preferredTone?: TonePreset | null;
+}
+
+export type OrgProfileInput = Partial<Omit<OrgProfile, "id" | "preferredTone">> & {
+  organizationName?: string;
+};
 
 export interface Application {
   id: string;

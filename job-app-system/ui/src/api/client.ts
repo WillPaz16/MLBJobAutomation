@@ -3,17 +3,30 @@ import type {
   AnalyticsMarket,
   AnalyticsSummary,
   AnalyticsTimeseries,
+  AnswerOverride,
+  AnswerOverrideInput,
+  AnswerSnippet,
+  AnswerSnippetInput,
+  ApplicantIdentity,
+  ApplicantIdentityInput,
   Application,
   ApplicationStage,
+  ApplyPack,
   CandidateProfile,
   CandidateProfileInput,
   Document,
   DocumentDetail,
+  EducationEntry,
+  EducationEntryInput,
+  OrgProfile,
+  OrgProfileInput,
   Posting,
   PrepContext,
   ProfileCoverage,
   ResumeBullet,
   SavedSearch,
+  TonePreset,
+  TonePresetInput,
 } from "./types";
 
 const BASE = "/api";
@@ -144,6 +157,7 @@ export const api = {
     ) => request<Application>(`/applications/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
     remove: (id: string) => request<void>(`/applications/${id}`, { method: "DELETE" }),
     prepContext: (id: string) => request<PrepContext>(`/applications/${id}/prep-context`),
+    applyPack: (id: string) => request<ApplyPack>(`/applications/${id}/apply-pack`),
   },
   documents: {
     list: (kind?: "resume" | "cover_letter") =>
@@ -195,5 +209,62 @@ export const api = {
     update: (id: string, data: Partial<{ name: string; query: string; isDefault: boolean }>) =>
       request<SavedSearch>(`/saved-searches/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
     remove: (id: string) => request<void>(`/saved-searches/${id}`, { method: "DELETE" }),
+  },
+  // ApplicantIdentity singleton + nested EducationEntry CRUD — see api/src/routes/identity.ts.
+  identity: {
+    get: () => request<ApplicantIdentity | null>("/identity"),
+    update: (data: ApplicantIdentityInput) =>
+      request<ApplicantIdentity>("/identity", { method: "PUT", body: JSON.stringify(data) }),
+    education: {
+      list: () => request<EducationEntry[]>("/identity/education"),
+      create: (data: EducationEntryInput) =>
+        request<EducationEntry>("/identity/education", { method: "POST", body: JSON.stringify(data) }),
+      update: (id: string, data: EducationEntryInput) =>
+        request<EducationEntry>(`/identity/education/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+      remove: (id: string) => request<void>(`/identity/education/${id}`, { method: "DELETE" }),
+    },
+  },
+  // AnswerSnippet + AnswerOverride CRUD — see api/src/routes/answers.ts.
+  answers: {
+    snippets: {
+      list: (params?: { category?: string }) => {
+        const q = params?.category ? `?category=${encodeURIComponent(params.category)}` : "";
+        return request<AnswerSnippet[]>(`/answers/snippets${q}`);
+      },
+      create: (data: AnswerSnippetInput) =>
+        request<AnswerSnippet>("/answers/snippets", { method: "POST", body: JSON.stringify(data) }),
+      update: (id: string, data: AnswerSnippetInput) =>
+        request<AnswerSnippet>(`/answers/snippets/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+      remove: (id: string) => request<void>(`/answers/snippets/${id}`, { method: "DELETE" }),
+    },
+    overrides: {
+      list: (params?: { applicationId?: string }) => {
+        const q = params?.applicationId ? `?applicationId=${encodeURIComponent(params.applicationId)}` : "";
+        return request<AnswerOverride[]>(`/answers/overrides${q}`);
+      },
+      create: (data: AnswerOverrideInput) =>
+        request<AnswerOverride>("/answers/overrides", { method: "POST", body: JSON.stringify(data) }),
+      update: (id: string, data: Partial<AnswerOverrideInput>) =>
+        request<AnswerOverride>(`/answers/overrides/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+      remove: (id: string) => request<void>(`/answers/overrides/${id}`, { method: "DELETE" }),
+    },
+  },
+  tonePresets: {
+    list: () => request<TonePreset[]>("/tone-presets"),
+    create: (data: TonePresetInput) =>
+      request<TonePreset>("/tone-presets", { method: "POST", body: JSON.stringify(data) }),
+    update: (id: string, data: TonePresetInput) =>
+      request<TonePreset>(`/tone-presets/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    remove: (id: string) => request<void>(`/tone-presets/${id}`, { method: "DELETE" }),
+  },
+  orgProfiles: {
+    list: () => request<OrgProfile[]>("/org-profiles"),
+    get: (organizationName: string) =>
+      request<OrgProfile>(`/org-profiles/${encodeURIComponent(organizationName)}`),
+    create: (data: OrgProfileInput) =>
+      request<OrgProfile>("/org-profiles", { method: "POST", body: JSON.stringify(data) }),
+    update: (id: string, data: OrgProfileInput) =>
+      request<OrgProfile>(`/org-profiles/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    remove: (id: string) => request<void>(`/org-profiles/${id}`, { method: "DELETE" }),
   },
 };
