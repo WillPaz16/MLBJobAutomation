@@ -42,9 +42,9 @@ const COVERAGE_POSTING_SELECT = {
 
 async function computeCoverage(profile: CoverageProfileInput | null) {
   // Scoped to `closedAt: null` only (active postings), NOT `dismissedAt: null` — dismissed
-  // postings must stay in this set so calibration/categoryActivity below can compute a real
-  // dismissedAvg/dismissed count. `totalPostings` (Discovery's default active+non-dismissed
-  // view scope) is then derived as a subset count of this same fetched set, not a second query.
+  // postings must stay in this set so calibration below can compute a real dismissedAvg/dismissed
+  // count. `totalPostings` (Discovery's default active+non-dismissed view scope) is then derived
+  // as a subset count of this same fetched set, not a second query.
   const postings = await prisma.posting.findMany({
     where: { closedAt: null },
     select: COVERAGE_POSTING_SELECT,
@@ -58,7 +58,6 @@ async function computeCoverage(profile: CoverageProfileInput | null) {
       skills: [],
       fitScores: [],
       tierCounts: { Strong: 0, Good: 0, Fair: 0, Weak: 0 },
-      categoryActivity: [],
       calibration: { dismissedAvg: null, dismissedCount: 0, appliedAvg: null, appliedCount: 0 },
     };
   }
@@ -84,9 +83,9 @@ async function computeCoverage(profile: CoverageProfileInput | null) {
     return { term, tier, postings: postingsMatched, occurrences };
   });
 
-  // With applications/dismissedAt already selected on `postings`, we need the linked
-  // Application count per posting for categoryActivity below — a second narrow query rather
-  // than widening COVERAGE_POSTING_SELECT with a full `applications: true` include.
+  // With applications/dismissedAt already selected on `postings`, we need the linked Application
+  // count per posting for the calibration split below — a second narrow query rather than
+  // widening COVERAGE_POSTING_SELECT with a full `applications: true` include.
   const applicationCounts = await prisma.application.groupBy({
     by: ["postingId"],
     where: { postingId: { in: postings.map((p) => p.id) } },
@@ -96,7 +95,6 @@ async function computeCoverage(profile: CoverageProfileInput | null) {
 
   const fitScores: number[] = [];
   const tierCounts = { Strong: 0, Good: 0, Fair: 0, Weak: 0 };
-  const categoryMap = new Map<string, { applied: number; dismissed: number; total: number }>();
   let dismissedSum = 0;
   let dismissedCount = 0;
   let appliedSum = 0;
@@ -107,12 +105,7 @@ async function computeCoverage(profile: CoverageProfileInput | null) {
     fitScores.push(score);
     tierCounts[fitTier(score)]++;
 
-    const bucket = categoryMap.get(posting.category) ?? { applied: 0, dismissed: 0, total: 0 };
-    bucket.total++;
     const hasApplication = appliedPostingIds.has(posting.id);
-    if (hasApplication) bucket.applied++;
-    if (posting.dismissedAt) bucket.dismissed++;
-    categoryMap.set(posting.category, bucket);
 
     if (posting.dismissedAt) {
       dismissedSum += score;
@@ -124,17 +117,11 @@ async function computeCoverage(profile: CoverageProfileInput | null) {
     }
   }
 
-  const categoryActivity = Array.from(categoryMap.entries()).map(([category, counts]) => ({
-    category,
-    ...counts,
-  }));
-
   return {
     totalPostings,
     skills,
     fitScores,
     tierCounts,
-    categoryActivity,
     calibration: {
       dismissedAvg: dismissedCount > 0 ? dismissedSum / dismissedCount : null,
       dismissedCount,

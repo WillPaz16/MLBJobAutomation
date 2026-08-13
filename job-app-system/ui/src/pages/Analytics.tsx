@@ -4,7 +4,7 @@ import { api } from "../api/client";
 import type { AnalyticsFunnel, AnalyticsMarket, AnalyticsSummary, AnalyticsTimeseries } from "../api/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { prettifyLabel } from "@/lib/labels";
+import { prettifyLabel, STAGE_LABELS, STAGE_ORDER } from "@/lib/labels";
 import { ErrorState } from "@/components/states/ErrorState";
 import { EmptyState } from "@/components/states/EmptyState";
 import { StatCard } from "@/components/StatCard";
@@ -15,10 +15,6 @@ import { Histogram } from "@/components/charts/Histogram";
 import { DotPlot } from "@/components/charts/DotPlot";
 import { Sparkline } from "@/components/charts/Sparkline";
 import { histogram } from "@/lib/timeSeries";
-
-// Stage order for the current-snapshot bar list (not a "funnel" — the real, timing-aware funnel
-// lives in the "Application funnel" section below, driven by ApplicationStageEvent).
-const STAGE_ORDER = ["FOUND", "REVIEWING", "APPLIED", "INTERVIEW", "OFFER", "REJECTED", "WITHDRAWN"];
 
 function LoadingSkeleton() {
   return (
@@ -99,7 +95,7 @@ export function Analytics() {
   ];
 
   const byStageBars = STAGE_ORDER.filter((s) => summary.byStage[s] !== undefined).map((stage) => ({
-    label: prettifyLabel(stage),
+    label: STAGE_LABELS[stage],
     value: summary.byStage[stage],
   }));
 
@@ -114,16 +110,15 @@ export function Analytics() {
 
   // Funnel: honest empty state when nothing has reached APPLIED yet — no zero-valued charts.
   const hasFunnelData = funnel.sampleSizes.appliedReached > 0;
-  const funnelStageOrder = ["FOUND", "REVIEWING", "APPLIED", "INTERVIEW", "OFFER", "REJECTED", "WITHDRAWN"];
-  const conversionBars = funnelStageOrder
+  const conversionBars = STAGE_ORDER
     .filter((s) => funnel.conversion[s] !== undefined && funnel.conversion[s] !== null)
     .map((stage) => ({
-      label: prettifyLabel(stage),
+      label: STAGE_LABELS[stage],
       value: Math.round((funnel.conversion[stage] as number) * 100),
     }));
-  const daysInStageEntries = funnelStageOrder
+  const daysInStageEntries = STAGE_ORDER
     .filter((s) => funnel.daysInStage[s] && funnel.daysInStage[s].n > 0)
-    .map((stage) => ({ label: prettifyLabel(stage), value: funnel.daysInStage[stage].median ?? 0 }));
+    .map((stage) => ({ label: STAGE_LABELS[stage], value: funnel.daysInStage[stage].median ?? 0 }));
 
   const fitCohortEntries = [
     { key: "dismissed", label: "Dismissed", stats: market.fitScoreByCohort.dismissed, color: "var(--chart-4, var(--chart-2))" },

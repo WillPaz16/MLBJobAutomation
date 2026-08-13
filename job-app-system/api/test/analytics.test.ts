@@ -245,8 +245,6 @@ describe("GET /api/analytics/market", () => {
     const res = await request(app).get("/api/analytics/market");
     expect(res.status).toBe(200);
     expect(res.body.timeToClose.mlb.every((v: number) => v === 0)).toBe(true);
-    expect(res.body.discoveryLag.n).toBe(0);
-    expect(res.body.discoveryLag.median).toBeNull();
     expect(res.body.dismissalBreakdown.category).toEqual([]);
     expect(res.body.fitScoreByCohort.dismissed.n).toBe(0);
   });

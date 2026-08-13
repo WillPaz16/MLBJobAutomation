@@ -43,6 +43,7 @@ import {
   type DiscoverySortOption,
 } from "@/lib/labels";
 import { useFilterParams } from "@/hooks/useFilterParams";
+import { useDebounced } from "@/hooks/useDebounced";
 import { useEntrance } from "@/lib/useEntrance";
 import { Pagination } from "@/components/Pagination";
 import { ErrorState } from "@/components/states/ErrorState";
@@ -184,15 +185,6 @@ function chipValueLabel(key: string, value: string): string {
 function chipLabel(key: string, value: string): string {
   const name = DISCOVERY_FILTER_NAMES[key] ?? key;
   return `${name}: ${chipValueLabel(key, value)}`;
-}
-
-function useDebounced<T>(value: T, delayMs: number): T {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(value), delayMs);
-    return () => clearTimeout(timer);
-  }, [value, delayMs]);
-  return debounced;
 }
 
 // Bounded-concurrency batch runner — used by bulk approve so a 20-item selection doesn't open 20

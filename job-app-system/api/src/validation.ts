@@ -72,8 +72,6 @@ export const createDocumentSchema = z.object({
   label: z.string().min(1),
   filePath: z.string().min(1),
   isBaseTemplate: z.boolean().optional(),
-  generatedFromBulletIds: z.string().optional(),
-  toneId: z.string().optional(),
 });
 
 export const registerDocumentSchema = z.object({

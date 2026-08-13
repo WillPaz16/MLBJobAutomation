@@ -225,6 +225,19 @@ export const DISCOVERY_FILTER_NAMES: Record<string, string> = {
   pageSize: "Rows per page",
 };
 
+// Canonical ApplicationStage order — the single source of truth for stage sequencing across the
+// app. Previously duplicated as Pipeline.tsx's STAGES, Analytics.tsx's STAGE_ORDER, and a second,
+// separately-typed copy inside Analytics.tsx as funnelStageOrder (v9 Phase 6 cleanup).
+export const STAGE_ORDER: ApplicationStage[] = [
+  "FOUND",
+  "REVIEWING",
+  "APPLIED",
+  "INTERVIEW",
+  "OFFER",
+  "REJECTED",
+  "WITHDRAWN",
+];
+
 // Moved from Pipeline.tsx so every page renders ApplicationStage/source labels the same way.
 export const STAGE_LABELS: Record<ApplicationStage, string> = {
   FOUND: "Found",

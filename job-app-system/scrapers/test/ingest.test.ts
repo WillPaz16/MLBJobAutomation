@@ -16,16 +16,15 @@ function samplePosting(overrides: Partial<NormalizedPosting> = {}): NormalizedPo
 
 describe("getOrCreateSource", () => {
   it("creates a source once and reuses it on a second call", async () => {
-    const first = await getOrCreateSource("greenhouse", "greenhouse", { boardToken: "a" });
-    const second = await getOrCreateSource("greenhouse", "greenhouse", { boardToken: "b" });
+    const first = await getOrCreateSource("greenhouse", "greenhouse");
+    const second = await getOrCreateSource("greenhouse", "greenhouse");
     expect(second.id).toBe(first.id);
-    expect(second.config).toBe(JSON.stringify({ boardToken: "b" }));
   });
 });
 
 describe("ingestPostings", () => {
   it("inserts new postings", async () => {
-    const source = await getOrCreateSource("test-source", "greenhouse", {});
+    const source = await getOrCreateSource("test-source", "greenhouse");
     const result = await ingestPostings(source.id, [samplePosting()], "TestCo");
     expect(result).toEqual({ inserted: 1, skipped: 0, flaggedDuplicates: 0, closed: 0, reopened: 0, total: 1 });
 
@@ -36,7 +35,7 @@ describe("ingestPostings", () => {
   });
 
   it("dedupes on a second run with the same externalId — no duplicate rows, lastSeenAt refreshed", async () => {
-    const source = await getOrCreateSource("test-source", "greenhouse", {});
+    const source = await getOrCreateSource("test-source", "greenhouse");
     await ingestPostings(source.id, [samplePosting()], "TestCo");
     const second = await ingestPostings(source.id, [samplePosting()], "TestCo");
 
@@ -47,7 +46,7 @@ describe("ingestPostings", () => {
   });
 
   it("backfills description on re-scrape when it was previously missing (fill-only)", async () => {
-    const source = await getOrCreateSource("test-source", "greenhouse", {});
+    const source = await getOrCreateSource("test-source", "greenhouse");
     await ingestPostings(source.id, [samplePosting({ description: undefined })], "TestCo");
 
     await ingestPostings(source.id, [samplePosting({ description: "<p>Full text</p>" })], "TestCo");
@@ -56,7 +55,7 @@ describe("ingestPostings", () => {
   });
 
   it("never overwrites an existing description with an empty one from a flaky run", async () => {
-    const source = await getOrCreateSource("test-source", "greenhouse", {});
+    const source = await getOrCreateSource("test-source", "greenhouse");
     await ingestPostings(source.id, [samplePosting({ description: "<p>Good text</p>" })], "TestCo");
 
     await ingestPostings(source.id, [samplePosting({ description: undefined })], "TestCo");
@@ -65,8 +64,8 @@ describe("ingestPostings", () => {
   });
 
   it("treats the same externalId under a different source as distinct when the title differs", async () => {
-    const sourceA = await getOrCreateSource("source-a", "greenhouse", {});
-    const sourceB = await getOrCreateSource("source-b", "lever", {});
+    const sourceA = await getOrCreateSource("source-a", "greenhouse");
+    const sourceB = await getOrCreateSource("source-b", "lever");
     await ingestPostings(sourceA.id, [samplePosting({ organization: "OrgOne" })], "OrgOne");
     const result = await ingestPostings(
       sourceB.id,
@@ -78,8 +77,8 @@ describe("ingestPostings", () => {
   });
 
   it("flags (does not skip) the same job posted under a different external ID with a near-identical title", async () => {
-    const sourceA = await getOrCreateSource("source-a", "teamworkonline", {});
-    const sourceB = await getOrCreateSource("source-b", "dayforce", {});
+    const sourceA = await getOrCreateSource("source-a", "teamworkonline");
+    const sourceB = await getOrCreateSource("source-b", "dayforce");
     await ingestPostings(
       sourceA.id,
       [
@@ -120,8 +119,8 @@ describe("ingestPostings", () => {
   it("does not fuzzy-match a new posting against a long-closed posting with a similar title", async () => {
     // The hoisted duplicate-check query is scoped to closedAt: null — a deliberate behavior
     // change from the old per-posting refetch, which had no such scoping.
-    const sourceA = await getOrCreateSource("source-a", "teamworkonline", {});
-    const sourceB = await getOrCreateSource("source-b", "dayforce", {});
+    const sourceA = await getOrCreateSource("source-a", "teamworkonline");
+    const sourceB = await getOrCreateSource("source-b", "dayforce");
     await ingestPostings(
       sourceA.id,
       [samplePosting({ externalId: "tw-close-1", organization: "Cleveland Guardians", title: "Coordinator, Community Partnerships and Events" })],
@@ -149,7 +148,7 @@ describe("ingestPostings", () => {
     // pushed onto that same in-memory list, or a second near-identical title later in the
     // same batch wouldn't be compared against the first (the old per-posting refetch got
     // this for free by re-querying the DB every time).
-    const source = await getOrCreateSource("source-a", "teamworkonline", {});
+    const source = await getOrCreateSource("source-a", "teamworkonline");
     const result = await ingestPostings(
       source.id,
       [
@@ -168,8 +167,8 @@ describe("ingestPostings", () => {
   });
 
   it("does not flag genuinely different jobs at the same org", async () => {
-    const sourceA = await getOrCreateSource("source-a", "teamworkonline", {});
-    const sourceB = await getOrCreateSource("source-b", "dayforce", {});
+    const sourceA = await getOrCreateSource("source-a", "teamworkonline");
+    const sourceB = await getOrCreateSource("source-b", "dayforce");
     await ingestPostings(
       sourceA.id,
       [samplePosting({ externalId: "tw-2", organization: "Arizona Diamondbacks", title: "Security Patrol Officer I" })],
@@ -191,7 +190,7 @@ describe("ingestPostings", () => {
   });
 
   it("inserts new postings and skips known ones within the same mixed batch", async () => {
-    const source = await getOrCreateSource("test-source", "greenhouse", {});
+    const source = await getOrCreateSource("test-source", "greenhouse");
     await ingestPostings(source.id, [samplePosting({ externalId: "ext-1" })], "TestCo");
 
     const result = await ingestPostings(
@@ -206,7 +205,7 @@ describe("ingestPostings", () => {
   it(
     "guards SQLITE_MAX_VARIABLE_NUMBER by inverting the missing-posting query above NOT_IN_CHUNK seen ids",
     async () => {
-      const source = await getOrCreateSource("test-source", "greenhouse", {});
+      const source = await getOrCreateSource("test-source", "greenhouse");
       // A posting that will go missing from the big run below.
       await ingestPostings(source.id, [samplePosting({ externalId: "will-go-missing" })], "TestCo");
 
@@ -233,7 +232,7 @@ describe("ingestPostings", () => {
 
   describe("active/inactive tracking", () => {
     it("does not close a posting missing from just one run", async () => {
-      const source = await getOrCreateSource("test-source", "greenhouse", {});
+      const source = await getOrCreateSource("test-source", "greenhouse");
       await ingestPostings(source.id, [samplePosting({ externalId: "ext-1" })], "TestCo");
 
       const result = await ingestPostings(source.id, [], "TestCo"); // posting no longer in this run's results
@@ -245,7 +244,7 @@ describe("ingestPostings", () => {
     });
 
     it("closes a posting after 2 consecutive misses", async () => {
-      const source = await getOrCreateSource("test-source", "greenhouse", {});
+      const source = await getOrCreateSource("test-source", "greenhouse");
       await ingestPostings(source.id, [samplePosting({ externalId: "ext-1" })], "TestCo");
       await ingestPostings(source.id, [], "TestCo");
       const result = await ingestPostings(source.id, [], "TestCo");
@@ -257,7 +256,7 @@ describe("ingestPostings", () => {
     });
 
     it("reopens a closed posting that reappears in a fresh run", async () => {
-      const source = await getOrCreateSource("test-source", "greenhouse", {});
+      const source = await getOrCreateSource("test-source", "greenhouse");
       await ingestPostings(source.id, [samplePosting({ externalId: "ext-1" })], "TestCo");
       await ingestPostings(source.id, [], "TestCo");
       await ingestPostings(source.id, [], "TestCo"); // now closed
@@ -273,7 +272,7 @@ describe("ingestPostings", () => {
     it("scopes the closing pass to (sourceId, organization) — one org's missing run doesn't close another org's postings under the same shared source", async () => {
       // Mirrors real usage: every org on a given adapter (e.g. every Greenhouse-hosted team)
       // shares one Source row. Closing pass must not cross organization boundaries.
-      const source = await getOrCreateSource("shared-source", "greenhouse", {});
+      const source = await getOrCreateSource("shared-source", "greenhouse");
       await ingestPostings(source.id, [samplePosting({ externalId: "org-a-1", organization: "Org A" })], "Org A");
       await ingestPostings(source.id, [samplePosting({ externalId: "org-b-1", organization: "Org B" })], "Org B");
 

@@ -15,11 +15,11 @@ const CLOSE_AFTER_MISSED_RUNS = 2;
 // closeMissingPostings inverts the query instead (fetch all open rows, diff in JS).
 export const NOT_IN_CHUNK = 900;
 
-export async function getOrCreateSource(name: string, type: string, config: Record<string, any>) {
+export async function getOrCreateSource(name: string, type: string) {
   return prisma.source.upsert({
     where: { name },
-    update: { config: JSON.stringify(config) },
-    create: { name, type, config: JSON.stringify(config) },
+    update: {},
+    create: { name, type },
   });
 }
 

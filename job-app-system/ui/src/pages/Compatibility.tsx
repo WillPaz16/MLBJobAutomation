@@ -17,6 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Histogram } from "@/components/charts/Histogram";
 import { PageHeader, PageLayout } from "@/components/PageLayout";
+import { useDebounced } from "@/hooks/useDebounced";
 
 const CATEGORIES = CATEGORY_ORDER;
 
@@ -60,15 +61,6 @@ const HISTOGRAM_BINS = 5;
 const HISTOGRAM_LABELS = ["0-20", "20-40", "40-60", "60-80", "80-100"];
 
 const TIERS: (keyof ProfileCoverage["tierCounts"])[] = ["Strong", "Good", "Fair", "Weak"];
-
-function useDebounced<T>(value: T, delayMs: number): T {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(value), delayMs);
-    return () => clearTimeout(timer);
-  }, [value, delayMs]);
-  return debounced;
-}
 
 function DeltaStrip({ base, preview }: { base: ProfileCoverage; preview: ProfileCoverage }) {
   return (

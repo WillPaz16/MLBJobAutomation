@@ -274,7 +274,7 @@ describe("runJobListRepoAdapter — the dynamic DB-relative floor (guard layer 3
 
     // Seed 10 "prior active" postings for this source/org so the dynamic floor has something to
     // compare against.
-    const source = await getOrCreateSource(cfg.key, "job-list-repo", cfg);
+    const source = await getOrCreateSource(cfg.key, "job-list-repo");
     for (let i = 0; i < 10; i++) {
       await prisma.posting.create({
         data: {

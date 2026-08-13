@@ -270,18 +270,15 @@ analyticsRouter.get(
 //       postedAtBasedCount: number,              // used real postedAt
 //       discoveredAtFallbackCount: number,        // fell back to discoveredAt
 //     },
-//     discoveryLag: { median: number|null, mean: number|null, n: number },  // over postings w/ postedAt
-//     dismissalBreakdown: {
-//       category: {key,label,value}[], seniority: [...], workMode: [...], region: [...]
-//     },  // over ALL dismissed postings, any status
+//     dismissalBreakdown: { category: {key,label,value}[] },  // over ALL dismissed postings, any status
 //     fitScoreByCohort: {
 //       dismissed: {median,mean,n}, applied: {median,mean,n}, other: {median,mean,n}
 //     },  // over active-scope postings, cohorts are mutually exclusive
-//     supplyMix: {
-//       weeks: string[], active: number[], closed: number[],   // by discoveredAt week, last N weeks
-//       bySeniority: {key,label,value}[], byWorkMode: [...], byRegion: [...], byMlbTeam: [...]
-//     }  // breakdowns over ALL postings (any status)
 //   }
+//
+// v9 Phase 6 removed `discoveryLag`, `supplyMix`, and the seniority/workMode/region facets of
+// `dismissalBreakdown` — Analytics.tsx never rendered any of them, and they were real per-request
+// aggregation queries running for nobody. Re-add if a future UI panel actually consumes them.
 // ---------------------------------------------------------------------------
 const TIME_TO_CLOSE_BUCKETS: { label: string; max: number }[] = [
   { label: "0-7", max: 7 },
@@ -317,26 +314,19 @@ const MARKET_FIT_POSTING_SELECT = {
 analyticsRouter.get(
   "/market",
   asyncHandler(async (_req, res) => {
-    const [closedPostings, postedPostings, dismissedPostings, activePostings, allPostings, profile] =
+    const [closedPostings, dismissedPostings, activePostings, profile] =
       await Promise.all([
         prisma.posting.findMany({
           where: { closedAt: { not: null } },
           select: { postedAt: true, discoveredAt: true, closedAt: true, isMlbTeam: true },
         }),
         prisma.posting.findMany({
-          where: { postedAt: { not: null } },
-          select: { postedAt: true, discoveredAt: true },
-        }),
-        prisma.posting.findMany({
           where: { dismissedAt: { not: null } },
-          select: { category: true, seniority: true, workMode: true, region: true },
+          select: { category: true },
         }),
         prisma.posting.findMany({
           where: { closedAt: null },
           select: MARKET_FIT_POSTING_SELECT,
-        }),
-        prisma.posting.findMany({
-          select: { discoveredAt: true, closedAt: true, seniority: true, workMode: true, region: true, isMlbTeam: true },
         }),
         prisma.candidateProfile.findUnique({ where: { id: "profile" } }),
       ]);
@@ -357,22 +347,10 @@ analyticsRouter.get(
       else nonMlbBuckets[idx]++;
     }
 
-    // --- discovery lag ---
-    const lagDays = postedPostings
-      .filter((p) => p.postedAt)
-      .map((p) => daysBetween(p.postedAt as Date, p.discoveredAt));
-    const discoveryLag = stats(lagDays);
-
     // --- dismissal breakdown ---
     const byCategory: Record<string, number> = {};
-    const bySeniorityDismissed: Record<string, number> = {};
-    const byWorkModeDismissed: Record<string, number> = {};
-    const byRegionDismissed: Record<string, number> = {};
     for (const p of dismissedPostings) {
       byCategory[p.category] = (byCategory[p.category] ?? 0) + 1;
-      if (p.seniority) bySeniorityDismissed[p.seniority] = (bySeniorityDismissed[p.seniority] ?? 0) + 1;
-      if (p.workMode) byWorkModeDismissed[p.workMode] = (byWorkModeDismissed[p.workMode] ?? 0) + 1;
-      if (p.region) byRegionDismissed[p.region] = (byRegionDismissed[p.region] ?? 0) + 1;
     }
 
     // --- fit score by cohort (dismissed / has application / everything else), over active-scope
@@ -397,28 +375,6 @@ analyticsRouter.get(
       }
     }
 
-    // --- supply mix over time (active vs closed, by discoveredAt week) + full breakdowns ---
-    const weeks = DEFAULT_WEEKS;
-    const activeByWeek = bucketByWeek(
-      allPostings.filter((p) => !p.closedAt).map((p) => p.discoveredAt),
-      weeks
-    );
-    const closedByWeek = bucketByWeek(
-      allPostings.filter((p) => p.closedAt).map((p) => p.discoveredAt),
-      weeks
-    );
-
-    const bySeniorityAll: Record<string, number> = {};
-    const byWorkModeAll: Record<string, number> = {};
-    const byRegionAll: Record<string, number> = {};
-    const byMlbTeamAll: Record<string, number> = { MLB: 0, "Non-MLB": 0 };
-    for (const p of allPostings) {
-      if (p.seniority) bySeniorityAll[p.seniority] = (bySeniorityAll[p.seniority] ?? 0) + 1;
-      if (p.workMode) byWorkModeAll[p.workMode] = (byWorkModeAll[p.workMode] ?? 0) + 1;
-      if (p.region) byRegionAll[p.region] = (byRegionAll[p.region] ?? 0) + 1;
-      byMlbTeamAll[p.isMlbTeam ? "MLB" : "Non-MLB"]++;
-    }
-
     res.json({
       timeToClose: {
         bucketLabels: TIME_TO_CLOSE_BUCKETS.map((b) => b.label),
@@ -427,26 +383,13 @@ analyticsRouter.get(
         postedAtBasedCount,
         discoveredAtFallbackCount,
       },
-      discoveryLag,
       dismissalBreakdown: {
         category: toBarList(byCategory),
-        seniority: toBarList(bySeniorityDismissed),
-        workMode: toBarList(byWorkModeDismissed),
-        region: toBarList(byRegionDismissed),
       },
       fitScoreByCohort: {
         dismissed: stats(dismissedScores),
         applied: stats(appliedScores),
         other: stats(otherScores),
-      },
-      supplyMix: {
-        weeks: weekLabels(weeks),
-        active: activeByWeek,
-        closed: closedByWeek,
-        bySeniority: toBarList(bySeniorityAll),
-        byWorkMode: toBarList(byWorkModeAll),
-        byRegion: toBarList(byRegionAll),
-        byMlbTeam: toBarList(byMlbTeamAll),
       },
     });
   })

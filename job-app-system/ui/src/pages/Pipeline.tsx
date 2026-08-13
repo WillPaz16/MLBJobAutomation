@@ -37,7 +37,7 @@ import { reorderWithinStage } from "@/lib/reorder";
 import { PrepContextPanel } from "@/components/PrepContextPanel";
 import { ApplyPanel } from "@/components/ApplyPanel";
 import { useEntrance } from "@/lib/useEntrance";
-import { CATEGORY_FILTER_LABELS, CATEGORY_FILTER_OPTIONS, CATEGORY_LABELS, SOURCE_LABELS, STAGE_LABELS } from "@/lib/labels";
+import { CATEGORY_FILTER_LABELS, CATEGORY_FILTER_OPTIONS, CATEGORY_LABELS, SOURCE_LABELS, STAGE_LABELS, STAGE_ORDER } from "@/lib/labels";
 import { ErrorState } from "@/components/states/ErrorState";
 import { EmptyState } from "@/components/states/EmptyState";
 import { PageHeader, PageLayout } from "@/components/PageLayout";
@@ -64,15 +64,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-const STAGES: ApplicationStage[] = [
-  "FOUND",
-  "REVIEWING",
-  "APPLIED",
-  "INTERVIEW",
-  "OFFER",
-  "REJECTED",
-  "WITHDRAWN",
-];
+const STAGES = STAGE_ORDER;
 
 // Collapsed by default — these two stages tend to accumulate the most cards over time and are
 // checked far less often than the active pipeline stages.

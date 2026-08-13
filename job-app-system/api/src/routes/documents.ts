@@ -1,6 +1,5 @@
 import { Router, raw } from "express";
-import { createHash } from "crypto";
-import { existsSync, mkdirSync, copyFileSync, statSync, writeFileSync, unlinkSync, readFileSync } from "fs";
+import { existsSync, mkdirSync, copyFileSync, statSync, writeFileSync, unlinkSync } from "fs";
 import { join, resolve, sep, extname, basename } from "path";
 import { prisma } from "../db.js";
 import { asyncHandler, HttpError } from "../asyncHandler.js";
@@ -145,12 +144,11 @@ documentsRouter.post(
     });
 
     const storageKey = `${document.id}__${sanitizeBasename(basename(filename, ext))}${ext}`;
-    const hash = createHash("sha256").update(req.body).digest("hex");
     writeFileSync(join(STORAGE_DIR, storageKey), req.body);
 
     const updated = await prisma.document.update({
       where: { id: document.id },
-      data: { storageKey, sha256: hash },
+      data: { storageKey },
     });
 
     res.status(201).json(updated);
@@ -200,11 +198,10 @@ documentsRouter.post(
     const storageKey = `${document.id}__${sanitizeBasename(basename(originalFilename, ext))}${ext}`;
     const destPath = join(STORAGE_DIR, storageKey);
     copyFileSync(resolvedSource, destPath);
-    const hash = createHash("sha256").update(readFileSync(destPath)).digest("hex");
 
     let updated = await prisma.document.update({
       where: { id: document.id },
-      data: { storageKey, sha256: hash },
+      data: { storageKey },
     });
 
     if (data.applicationId && data.attachAs) {

@@ -14,7 +14,6 @@ describe("GET /api/profile/coverage", () => {
     expect(res.body.skills).toEqual([]);
     expect(res.body.fitScores).toEqual([]);
     expect(res.body.tierCounts).toEqual({ Strong: 0, Good: 0, Fair: 0, Weak: 0 });
-    expect(res.body.categoryActivity).toEqual([]);
     expect(res.body.calibration).toEqual({
       dismissedAvg: null,
       dismissedCount: 0,
@@ -62,22 +61,6 @@ describe("GET /api/profile/coverage", () => {
     expect(skillMap.plotly.occurrences).toBe(0);
 
     expect(res.body.fitScores.length).toBe(2);
-  });
-
-  it("computes categoryActivity grouping by category, counting applied vs dismissed", async () => {
-    await request(app).put("/api/profile").send({ skills: "python" });
-
-    const applied = await createPosting({ category: "DATA_SCIENCE", title: "DS role" });
-    await createApplication(applied.id, { stage: "APPLIED" });
-
-    await createPosting({ category: "DATA_SCIENCE", title: "DS role 2", dismissedAt: new Date() });
-    await createPosting({ category: "BASEBALL_OPS", title: "Ops role" });
-
-    const res = await request(app).get("/api/profile/coverage");
-    const byCategory = Object.fromEntries(res.body.categoryActivity.map((c: any) => [c.category, c]));
-
-    expect(byCategory.DATA_SCIENCE).toEqual({ category: "DATA_SCIENCE", applied: 1, dismissed: 1, total: 2 });
-    expect(byCategory.BASEBALL_OPS).toEqual({ category: "BASEBALL_OPS", applied: 0, dismissed: 0, total: 1 });
   });
 
   it("computes calibration averages against dismissed vs applied postings, returning null for zero counts", async () => {

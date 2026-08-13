@@ -45,7 +45,7 @@ function stubAdapter(fetchPostings: Adapter["fetchPostings"]): Adapter {
 
 describe("runAdapter dynamic-floor guard", () => {
   it("refuses to run the closing pass when postings drop below 50% of prior active — twice in a row, no missedRuns bump, nothing closes", async () => {
-    const source = await getOrCreateSource("stub-source", "stub", {});
+    const source = await getOrCreateSource("stub-source", "stub");
     await seedActivePostings(source.id, "TestCo", 4);
 
     const adapter = stubAdapter(async () => []);
@@ -65,7 +65,7 @@ describe("runAdapter dynamic-floor guard", () => {
   });
 
   it("does not fire when priorActive is 0 — a genuinely-always-empty org ingests normally", async () => {
-    const source = await getOrCreateSource("stub-source", "stub", {});
+    const source = await getOrCreateSource("stub-source", "stub");
     const adapter = stubAdapter(async () => []);
 
     // No seeded postings for this org at all.
@@ -76,7 +76,7 @@ describe("runAdapter dynamic-floor guard", () => {
   });
 
   it("scopes the guard to (source, organization) — one org's healthy return isn't blocked by another org's crash on the same shared Source", async () => {
-    const source = await getOrCreateSource("stub-source", "stub", {});
+    const source = await getOrCreateSource("stub-source", "stub");
     await seedActivePostings(source.id, "OrgA", 10);
     await seedActivePostings(source.id, "OrgB", 4);
 

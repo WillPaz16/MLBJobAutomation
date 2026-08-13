@@ -104,7 +104,6 @@ describe("POST /api/documents/register", () => {
 
     expect(res.status).toBe(201);
     expect(res.body.storageKey).toBeTruthy();
-    expect(res.body.sha256).toBeTruthy();
     expect(res.body.sourcePath).toBe(sourcePath);
   });
 

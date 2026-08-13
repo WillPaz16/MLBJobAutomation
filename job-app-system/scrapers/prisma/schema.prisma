@@ -15,7 +15,6 @@ model Source {
   id        String   @id @default(cuid())
   name      String   @unique
   type      String   // "greenhouse" | "lever" | "workday" | "team_page" | "manual"
-  config    String?  // JSON string: selectors, board tokens, base URLs, etc.
   createdAt DateTime @default(now())
   postings  Posting[]
 }
@@ -41,6 +40,9 @@ model Posting {
 
   // Active/inactive tracking (scrapers/src/ingest.ts's closing pass, scoped per sourceId+organization
   // since one Source row is shared across every org an adapter covers).
+  //
+  // lastSeenAt is write-only today (never read by any query), but deliberately kept as a
+  // diagnostic — see api/prisma/schema.prisma's full comment. Do not remove it.
   lastSeenAt    DateTime @default(now())
   closedAt      DateTime?
   missedRuns    Int      @default(0)
@@ -115,16 +117,12 @@ model Document {
   label                 String
   filePath              String
   isBaseTemplate        Boolean  @default(false)
-  generatedFromBulletIds String? // comma-separated ResumeBullet ids used to draft this document
-  toneId                String?
-  tone                  TonePreset? @relation(fields: [toneId], references: [id])
   createdAt             DateTime @default(now())
 
   storageKey            String?
   originalFilename      String?
   mimeType               String?
   sizeBytes              Int?
-  sha256                 String?
   sourcePath             String?
 
   resumeFor             Application[] @relation("ResumeDoc")
@@ -149,7 +147,6 @@ model TonePreset {
   name      String   @unique
   guidance  String   // freeform description of voice/structure to follow
   isDefault Boolean  @default(false)
-  documents Document[]
   orgs      OrgProfile[]
 }
 

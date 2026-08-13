@@ -68,7 +68,6 @@ export interface Document {
   originalFilename: string | null;
   mimeType: string | null;
   sizeBytes: number | null;
-  sha256: string | null;
   sourcePath: string | null;
   // Present on GET /api/documents (list) and GET /api/documents/:id.
   exists?: boolean;
@@ -295,26 +294,13 @@ export interface AnalyticsMarket {
     postedAtBasedCount: number;
     discoveredAtFallbackCount: number;
   };
-  discoveryLag: StageStats;
   dismissalBreakdown: {
     category: BarListEntry[];
-    seniority: BarListEntry[];
-    workMode: BarListEntry[];
-    region: BarListEntry[];
   };
   fitScoreByCohort: {
     dismissed: StageStats;
     applied: StageStats;
     other: StageStats;
-  };
-  supplyMix: {
-    weeks: string[];
-    active: number[];
-    closed: number[];
-    bySeniority: BarListEntry[];
-    byWorkMode: BarListEntry[];
-    byRegion: BarListEntry[];
-    byMlbTeam: BarListEntry[];
   };
 }
 
@@ -325,7 +311,6 @@ export interface ProfileCoverage {
   skills: { term: string; tier: "core" | "secondary"; postings: number; occurrences: number }[];
   fitScores: number[];
   tierCounts: { Strong: number; Good: number; Fair: number; Weak: number };
-  categoryActivity: { category: string; applied: number; dismissed: number; total: number }[];
   calibration: {
     dismissedAvg: number | null;
     dismissedCount: number;

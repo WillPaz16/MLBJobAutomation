@@ -27,7 +27,7 @@ import { prisma } from "./db.js";
 import type { Adapter } from "./types.js";
 
 export async function runAdapter(adapter: Adapter, configs: Record<string, any>[]) {
-  const source = await getOrCreateSource(adapter.sourceName, adapter.sourceType, {});
+  const source = await getOrCreateSource(adapter.sourceName, adapter.sourceType);
   let totalInserted = 0;
 
   for (const config of configs) {
@@ -100,7 +100,7 @@ export async function runAdapter(adapter: Adapter, configs: Record<string, any>[
 //     one organization's ingestPostings call failing (e.g. a transient DB error) must not stop
 //     ingestion for every other organization in the same repo's parsed output.
 export async function runJobListRepoAdapter(cfg: JobListRepoConfig): Promise<number> {
-  const source = await getOrCreateSource(cfg.key, jobListRepoAdapter.sourceType, cfg);
+  const source = await getOrCreateSource(cfg.key, jobListRepoAdapter.sourceType);
   let totalInserted = 0;
 
   let postings;
