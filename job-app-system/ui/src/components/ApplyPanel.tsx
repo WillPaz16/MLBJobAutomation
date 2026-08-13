@@ -286,20 +286,129 @@ export function ApplyPanel({ applicationId }: { applicationId: string }) {
                 </Button>
               </div>
 
-              <section className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">
-                <div className="flex items-center gap-1.5 font-medium text-foreground">
-                  <Wand2 className="size-3.5" /> Apply-assist helper (coming soon)
-                </div>
-                <p className="mt-1">
-                  A one-time-install browser helper will be able to autofill this data directly into an ATS
-                  form. Not built yet — this section is a placeholder for that later phase.
-                </p>
-              </section>
+              <ApplyAssistHelperSection applicationId={applicationId} />
             </>
           ) : null}
         </div>
       )}
     </div>
+  );
+}
+
+// v8 Phase 6 — the apply-assist helper install/copy affordances. Three layers, in the plan's
+// deliberate reliability order (in-app copy panel above is layer 1 and already the floor):
+//   2. Userscript (Violentmonkey/Tampermonkey) — the main deliverable, served fresh per-application
+//      by the API with identity data inlined server-side at request time (no runtime callback to
+//      localhost from the page it runs on).
+//   3. Bookmarklet — a convenience wrapper around the exact same script text, documented as
+//      possibly CSP-blocked, never the primary path.
+// Everything here is honest about the ceiling: Greenhouse/Lever/Ashby-style plain HTML forms fill
+// well, iCIMS is fair, Workday's custom (non-native) dropdowns mostly won't fill and fall back to a
+// flagged/skipped highlight — never oversell "autofills everything."
+function ApplyAssistHelperSection({ applicationId }: { applicationId: string }) {
+  const scriptUrl = api.applications.applyAssistScriptUrl(applicationId);
+  const [bookmarkletHref, setBookmarkletHref] = useState<string | null>(null);
+  const [bookmarkletError, setBookmarkletError] = useState<string | null>(null);
+
+  async function buildBookmarklet() {
+    setBookmarkletError(null);
+    try {
+      const res = await fetch(scriptUrl);
+      if (!res.ok) throw new Error("Failed to fetch script");
+      const scriptText = await res.text();
+      // A bookmarklet has to be a single `javascript:` URI with no UserScript metadata block (the
+      // browser executes it directly on click, in the PAGE's own world — unlike a userscript
+      // manager, there's no isolated world here, which is exactly why this layer can be blocked by
+      // a strict page CSP and is never positioned as the primary path).
+      const body = scriptText.replace(/\/\/ ==UserScript==[\s\S]*?\/\/ ==\/UserScript==\n*/, "");
+      setBookmarkletHref(`javascript:${encodeURIComponent(body)}`);
+    } catch {
+      setBookmarkletError("Couldn't build the bookmarklet — try the userscript install instead.");
+    }
+  }
+
+  async function copyScriptUrl() {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}${scriptUrl}`);
+      toast.success("Copied apply-assist script URL");
+    } catch {
+      toast.error("Couldn't copy to clipboard");
+    }
+  }
+
+  return (
+    <section className="rounded-md border border-dashed p-2 text-xs">
+      <div className="flex items-center gap-1.5 font-medium text-foreground">
+        <Wand2 className="size-3.5" /> Apply-assist helper
+      </div>
+      <p className="mt-1 text-muted-foreground">
+        A one-click, per-application browser helper that types this data into an ATS form's fields —
+        it fills, highlights everything it touched, and stops. It never clicks Submit/Apply/Continue
+        and never runs on its own; every run needs a fresh click on the button it adds to the page.
+        EEO fields (gender/race/disability/veteran) get autofilled but visually flagged for your
+        review. Quality varies by ATS: Greenhouse/Lever/Ashby fill well, iCIMS is fair, and Workday's
+        custom dropdowns mostly won't fill — those get flagged instead, which is expected.
+      </p>
+
+      <div className="mt-2 space-y-2">
+        <div>
+          <div className="font-medium text-foreground">1. Userscript (recommended)</div>
+          <p className="text-muted-foreground">
+            Install a userscript manager (
+            <a
+              href="https://violentmonkey.github.io/"
+              target="_blank"
+              rel="noreferrer"
+              className="text-primary hover:underline"
+            >
+              Violentmonkey
+            </a>{" "}
+            or Tampermonkey), then open the link below — it'll offer to install a script generated
+            just for this application. Re-open it any time this application's data changes; it does
+            not auto-update itself in the background.
+          </p>
+          <div className="mt-1 flex items-center gap-2">
+            <a href={scriptUrl} target="_blank" rel="noreferrer" className="text-primary hover:underline">
+              Open apply-assist script
+            </a>
+            <CopyButton text={`${window.location.origin}${scriptUrl}`} label="script URL" />
+          </div>
+        </div>
+
+        <div>
+          <div className="font-medium text-foreground">2. Bookmarklet (fallback)</div>
+          <p className="text-muted-foreground">
+            A convenience wrapper around the same script as a browser-bar bookmark. Many ATS pages'
+            Content Security Policy blocks bookmarklets entirely — if clicking it does nothing, use
+            the userscript above instead.
+          </p>
+          <div className="mt-1">
+            {bookmarkletHref ? (
+              <a
+                href={bookmarkletHref}
+                onClick={(e) => {
+                  e.preventDefault();
+                  toast.info("Drag this text to your bookmarks bar instead of clicking it.");
+                }}
+                className="cursor-grab text-primary hover:underline"
+                draggable
+              >
+                Apply Assist (drag me to bookmarks bar)
+              </a>
+            ) : (
+              <Button size="sm" variant="outline" onClick={buildBookmarklet}>
+                Build bookmarklet
+              </Button>
+            )}
+            {bookmarkletError && <p className="mt-1 text-destructive">{bookmarkletError}</p>}
+          </div>
+        </div>
+
+        <Button size="sm" variant="ghost" onClick={copyScriptUrl}>
+          <Copy className="size-3.5" /> Copy script URL
+        </Button>
+      </div>
+    </section>
   );
 }
 

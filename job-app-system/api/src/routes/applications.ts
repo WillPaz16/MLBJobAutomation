@@ -3,6 +3,7 @@ import { prisma } from "../db.js";
 import { asyncHandler, HttpError } from "../asyncHandler.js";
 import { paginationSchema, updateApplicationSchema } from "../validation.js";
 import { resolveTemplate, type TemplateContext } from "../answerTemplate.js";
+import { generateApplyAssistScript } from "../applyAssist/generateScript.js";
 
 export const applicationsRouter = Router();
 
@@ -162,6 +163,55 @@ applicationsRouter.get(
     });
 
     res.json({ application, identity, resolvedAnswers });
+  })
+);
+
+// v8 Phase 6 — serves a generated, self-contained userscript that inlines THIS application's
+// apply-pack data (identity + resolved answers) at request time, so the running script never
+// calls back to localhost (or anywhere) at runtime. Same PII boundary as apply-pack above: this
+// route is the only other place identity data leaves the API, and only into a file the user
+// explicitly downloads/installs into their own userscript manager. See
+// api/src/applyAssist/generateScript.ts for the full guard rationale (no click/submit calls,
+// sensitive-field skipping, never-auto-runs, never-overwrites, undo, on-page summary).
+applicationsRouter.get(
+  "/:id/apply-assist-script",
+  asyncHandler(async (req, res) => {
+    const application = await prisma.application.findUnique({
+      where: { id: req.params.id },
+      include: { posting: true },
+    });
+    if (!application) throw new HttpError(404, "Application not found");
+
+    const [identity, orgProfile] = await Promise.all([
+      prisma.applicantIdentity.findUnique({
+        where: { id: "identity" },
+        include: { education: true },
+      }),
+      prisma.orgProfile.findUnique({ where: { organizationName: application.posting.organization } }),
+    ]);
+
+    const resolvedAnswers = await computeResolvedAnswers(application.id, {
+      org: application.posting.organization,
+      role: application.posting.title,
+      orgNotes: orgProfile?.notes ?? null,
+    });
+
+    const script = generateApplyAssistScript({
+      applicationId: application.id,
+      organization: application.posting.organization,
+      title: application.posting.title,
+      postingUrl: application.posting.url ?? null,
+      identity: identity as unknown as Record<string, unknown> | null,
+      resolvedAnswers: resolvedAnswers.map((a) => ({
+        question: a.question,
+        questionKey: a.questionKey,
+        text: a.text,
+      })),
+    });
+
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("Content-Disposition", `inline; filename="apply-assist-${application.id}.user.js"`);
+    res.send(script);
   })
 );
 

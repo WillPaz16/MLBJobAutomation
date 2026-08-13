@@ -67,6 +67,7 @@ vi.mock("../src/api/client", () => ({
     applications: {
       list: vi.fn().mockResolvedValue([]),
       applyPack: vi.fn(),
+      applyAssistScriptUrl: (id: string) => `/api/applications/${id}/apply-assist-script`,
     },
     documents: {
       fileUrl: (id: string, download = false) => `/api/documents/${id}/file${download ? "?download=1" : ""}`,
