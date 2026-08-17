@@ -190,6 +190,7 @@ export const putCandidateProfileSchema = z.object({
   preferredCategories: z.string().optional(),
   locationKeywords: z.string().optional(),
   excludeKeywords: z.string().optional(),
+  highestEducationLevel: postingEducationRequirementSchema.nullable().optional(),
 });
 
 // ApplicantIdentity PUT — every field optional/nullable, mirroring the model itself (every column

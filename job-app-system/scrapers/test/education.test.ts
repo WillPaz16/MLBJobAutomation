@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyEducationRequirement } from "../src/education.js";
+import { classifyEducationRequirement, EDUCATION_RANK } from "../src/education.js";
 
 describe("classifyEducationRequirement", () => {
   it("classifies PhD requirements", () => {
@@ -72,5 +72,13 @@ describe("classifyEducationRequirement", () => {
     expect(classifyEducationRequirement("IT Support Specialist", "Familiarity with MS Excel and MS Teams.")).toBe(
       null
     );
+  });
+});
+
+describe("EDUCATION_RANK", () => {
+  it("orders levels low to high", () => {
+    expect(EDUCATION_RANK.NONE).toBeLessThan(EDUCATION_RANK.BACHELORS);
+    expect(EDUCATION_RANK.BACHELORS).toBeLessThan(EDUCATION_RANK.MASTERS);
+    expect(EDUCATION_RANK.MASTERS).toBeLessThan(EDUCATION_RANK.PHD);
   });
 });

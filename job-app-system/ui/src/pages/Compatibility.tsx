@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { MapPin, Search, SlidersHorizontal, Sparkles, Tags } from "lucide-react";
+import { GraduationCap, MapPin, Search, SlidersHorizontal, Sparkles, Tags } from "lucide-react";
 import { api } from "@/api/client";
 import type { CandidateProfileInput, Posting, PostingCategory, ProfileCoverage } from "@/api/types";
 import { Badge } from "@/components/ui/badge";
-import { CATEGORY_LABELS, CATEGORY_ORDER } from "@/lib/labels";
+import { CATEGORY_LABELS, CATEGORY_ORDER, EDUCATION_REQUIREMENT_LABELS, EDUCATION_REQUIREMENT_OPTIONS } from "@/lib/labels";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { histogram } from "@/lib/timeSeries";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -58,6 +59,11 @@ const NON_POSTING_FACING_TAGS = new Set([
 // Fixed 5-bin histogram over the 0-100 fit-score domain, labeled to match the tier thresholds
 // used everywhere else (Strong>=65, Good>=40, Fair>=20, Weak<20) — see api/src/fitScore.ts.
 const HISTOGRAM_BINS = 5;
+
+// Base UI's Select doesn't accept an empty-string item value, so "not set" needs its own sentinel
+// — same "all"-as-sentinel pattern Discovery's filters already use, just mapped to null instead
+// of "no filter" on save.
+const EDUCATION_LEVEL_UNSET = "UNSET";
 const HISTOGRAM_LABELS = ["0-20", "20-40", "40-60", "60-80", "80-100"];
 
 const TIERS: (keyof ProfileCoverage["tierCounts"])[] = ["Strong", "Good", "Fair", "Weak"];
@@ -222,6 +228,7 @@ export function Compatibility() {
   const [preferredCategories, setPreferredCategories] = useState<Set<PostingCategory>>(new Set());
   const [locationKeywords, setLocationKeywords] = useState("");
   const [excludeKeywords, setExcludeKeywords] = useState("");
+  const [highestEducationLevel, setHighestEducationLevel] = useState<string>(EDUCATION_LEVEL_UNSET);
   const [coverage, setCoverage] = useState<ProfileCoverage | null>(null);
   const [preview, setPreview] = useState<ProfileCoverage | null>(null);
   const [savedDraft, setSavedDraft] = useState<CandidateProfileInput | null>(null);
@@ -251,6 +258,7 @@ export function Compatibility() {
             preferredCategories: profile.preferredCategories ?? "",
             locationKeywords: profile.locationKeywords ?? "",
             excludeKeywords: profile.excludeKeywords ?? "",
+            highestEducationLevel: profile.highestEducationLevel ?? null,
           };
           setSkills(draft.skills);
           setCoreSkills(draft.coreSkills ?? "");
@@ -259,6 +267,7 @@ export function Compatibility() {
           );
           setLocationKeywords(draft.locationKeywords ?? "");
           setExcludeKeywords(draft.excludeKeywords ?? "");
+          setHighestEducationLevel(profile.highestEducationLevel ?? EDUCATION_LEVEL_UNSET);
           setSavedDraft(draft);
         } else {
           // No profile yet — seed core skills from a curated, posting-facing default list, and
@@ -286,6 +295,7 @@ export function Compatibility() {
             preferredCategories: "",
             locationKeywords: "",
             excludeKeywords: "",
+            highestEducationLevel: null,
           });
         }
       } catch {
@@ -313,8 +323,9 @@ export function Compatibility() {
       preferredCategories: Array.from(preferredCategories).join(","),
       locationKeywords,
       excludeKeywords,
+      highestEducationLevel: highestEducationLevel === EDUCATION_LEVEL_UNSET ? null : highestEducationLevel,
     }),
-    [skills, coreSkills, preferredCategories, locationKeywords, excludeKeywords]
+    [skills, coreSkills, preferredCategories, locationKeywords, excludeKeywords, highestEducationLevel]
   );
 
   const isDirty =
@@ -478,6 +489,39 @@ export function Compatibility() {
                     </div>
                   ))}
                 </div>
+              </CardContent>
+            </Card>
+
+            <Separator />
+
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-1.5">
+                  <GraduationCap className="size-4 text-primary" />
+                  <CardTitle>Education</CardTitle>
+                </div>
+                <CardDescription>
+                  Your highest degree — postings requiring more than this take a fit-score penalty.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Label htmlFor="highestEducationLevel">Highest education level</Label>
+                <Select
+                  value={highestEducationLevel}
+                  onValueChange={(v) => setHighestEducationLevel(v ?? EDUCATION_LEVEL_UNSET)}
+                >
+                  <SelectTrigger id="highestEducationLevel" className="mt-1 w-full sm:w-64">
+                    <SelectValue labels={{ [EDUCATION_LEVEL_UNSET]: "Not set", ...EDUCATION_REQUIREMENT_LABELS }} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={EDUCATION_LEVEL_UNSET}>Not set</SelectItem>
+                    {EDUCATION_REQUIREMENT_OPTIONS.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>
+                        {o.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </CardContent>
             </Card>
 

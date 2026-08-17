@@ -300,12 +300,43 @@ React UI, all running on this machine — nothing is deployed anywhere.
   visually. Caught live in the browser, not by type-checking (this is a runtime prop-contract
   issue, not a type error) — another entry in the running list of Base-UI-not-Radix gotchas this
   project has hit.
-- **Semantic/embedding-based job matching is deferred, not built.** Postgres/pgvector was
-  evaluated and explicitly rejected — this system is nowhere near the data volume where a vector
-  database would matter, brute-force cosine similarity in SQLite would be plenty if the feature
-  is ever built. It's deferred because a paid embeddings API isn't worth the recurring cost for
-  what's currently a convenience feature. If revisited, default to a **local** embedding model
-  (e.g. Ollama) before reaching for a paid API — that was the stated preference.
+- **Semantic/embedding-based job matching is built, using a local model (Ollama).** The earlier
+  deferral (Postgres/pgvector rejected as unnecessary at this data volume, a paid embeddings API
+  rejected as not worth the recurring cost) held until a local model made it free to try — matches
+  the stated preference for local-first if the feature were ever built. `api/src/embeddings.ts`
+  (mirrored into `scrapers/src/embeddings.ts` — see the dual-package-duplication convention above)
+  calls a local Ollama server (`http://localhost:11434`, model `nomic-embed-text`, both
+  configurable via `OLLAMA_URL`/`OLLAMA_EMBED_MODEL`) for `embedText()`, plus a pure
+  `cosineSimilarity()`. Embeddings are precomputed and stored once, not recomputed per request:
+  `Posting.embedding` at ingest time (`scrapers/src/ingest.ts`, fill-only like `description`/
+  `salary` — a real network call per posting, unlike the free regex classifiers, so it's never
+  recomputed on re-scrape) and `CandidateProfile.embedding` on every `PUT /api/profile` save. This
+  keeps `computeFitScore` itself fully synchronous — it only ever reads two already-computed JSON-
+  encoded vectors and does cosine similarity, never calls Ollama itself. Contributes up to 12
+  points (`12 * max(0, cosineSimilarity)`) as a new `"semantic"` fit-score reason; contributes 0
+  when either side is missing an embedding (unbackfilled posting, Ollama was unreachable at
+  ingest/save time, or a malformed stored value) — never a penalty for missing data, same
+  philosophy as the skill terms. **`nomic-embed-text` has a 2048-token context window** — a real
+  job description (often HTML-entity-heavy, e.g. `&lt;p&gt;`, which tokenizes denser than plain
+  text) can exceed it and the request 500s outright rather than truncating server-side; both
+  `embeddings.ts` copies truncate the input to `MAX_PROMPT_CHARS` (3000) client-side to avoid
+  this — confirmed live, a small number of very dense non-ASCII (e.g. Japanese-title) postings
+  still exceed even that and are left with `embedding: null`, which is a safe no-op, not a bug to
+  chase further. `scrapers/src/scripts/backfillEmbeddings.ts` (fill-only, safe to re-run — only
+  processes postings still missing one) backfills rows that predate this feature or failed at
+  ingest time, same one-off-script convention as `backfillEducationRequirement.ts`.
+- **Fit scoring is personalized against your own education level, not just a posting's stated
+  requirement.** `CandidateProfile.highestEducationLevel` (one of `scrapers/src/education.ts`'s
+  existing `NONE`/`BACHELORS`/`MASTERS`/`PHD` enum, exported as `EDUCATION_RANK` for ordering,
+  duplicated as a literal `EDUCATION_RANK` const in `api/src/fitScore.ts` per the same
+  independent-packages convention as the dual-synced schema files) is deliberately a field on
+  `CandidateProfile` (a scoring input), not `ApplicantIdentity`/`EducationEntry` (the real-PII
+  identity model) — a degree *level* alone isn't identity PII, unlike everything else that model
+  guards against leaking into a scoring endpoint. Set via a new "Highest education level" field on
+  Compatibility (`ui/src/pages/Compatibility.tsx`). `computeFitScore` applies a flat -15 penalty,
+  one-directional only: a posting whose `educationRequirement` outranks your profile's level is
+  penalized, but there's no bonus for being "overqualified," and no effect at all when either side
+  is unset.
 - **LinkedIn/Indeed scraping is explicitly out of scope**, same reasoning as Teamwork Online —
   both sit behind bot detection we don't build around. The `Adapter`/`sources.config.ts` pattern
   already generalizes to any Greenhouse/Lever/Workday employer with zero structural changes;

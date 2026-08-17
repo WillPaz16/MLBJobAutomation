@@ -245,6 +245,7 @@ export interface CandidateProfile {
   preferredCategories: string | null;
   locationKeywords: string | null;
   excludeKeywords: string | null;
+  highestEducationLevel: string | null;
   updatedAt: string;
 }
 
@@ -336,4 +337,5 @@ export type CandidateProfileInput = {
   preferredCategories?: string;
   locationKeywords?: string;
   excludeKeywords?: string;
+  highestEducationLevel?: string | null;
 };

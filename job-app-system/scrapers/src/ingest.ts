@@ -6,6 +6,22 @@ import { classifyWorkMode, classifyRegion } from "./location.js";
 import { isMlbOrg } from "./categorize.js";
 import { classifyIsInternship } from "./internship.js";
 import { classifyEducationRequirement } from "./education.js";
+import { embedText } from "./embeddings.js";
+
+// Best-effort: an unreachable local Ollama server must never block ingestion — returns null so
+// the field simply stays unset (fitScore.ts's semantic term treats a missing embedding as a
+// no-op, not a penalty). Fill-only like description/salary below, NOT recomputed every re-scrape
+// like the cheap regex classifiers — an embedding is a real network call per posting, so it's
+// only ever computed once.
+async function embedPosting(title: string, description?: string): Promise<string | null> {
+  try {
+    const vector = await embedText(`${title} ${description ?? ""}`);
+    return JSON.stringify(vector);
+  } catch (err) {
+    console.error(`Failed to compute embedding for posting "${title}" (Ollama unreachable?):`, err);
+    return null;
+  }
+}
 
 // GitHub-aggregator READMEs (e.g. SimplifyJobs' New-Grad-Positions) parse company names as free
 // text and can produce multiple variants of the same real employer's name — confirmed live for
@@ -74,6 +90,7 @@ export async function ingestPostings(sourceId: string, postings: NormalizedPosti
     });
     if (existing) {
       if (existing.closedAt) reopened++;
+      const embedding = existing.embedding ? undefined : await embedPosting(posting.title, posting.description);
       await prisma.posting.update({
         where: { id: existing.id },
         data: {
@@ -109,6 +126,7 @@ export async function ingestPostings(sourceId: string, postings: NormalizedPosti
           // regex buckets can improve over time even though title/description rarely change for an
           // already-seen posting.
           educationRequirement: classifyEducationRequirement(posting.title, posting.description),
+          ...(embedding !== undefined ? { embedding } : {}),
           // Simple pass-through, like title/url — always overwrite from the latest adapter
           // output rather than fill-only/recompute, since it's just structural metadata about
           // which source section a row came from (not a derived classifier that can "improve").
@@ -140,6 +158,7 @@ export async function ingestPostings(sourceId: string, postings: NormalizedPosti
         isMlbTeam: isMlbOrg(posting.organization),
         isInternship: classifyIsInternship(posting.title),
         educationRequirement: classifyEducationRequirement(posting.title, posting.description),
+        embedding: await embedPosting(posting.title, posting.description),
         sourceSection: posting.sourceSection ?? null,
         url: posting.url,
         description: posting.description,

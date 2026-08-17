@@ -2,7 +2,7 @@ export type EducationRequirement = "NONE" | "BACHELORS" | "MASTERS" | "PHD";
 
 // Ranked low-to-high so the "minimum stated requirement wins" rule (see classifyEducationRequirement's
 // doc comment) can just take the lowest-ranked bucket among whatever matched.
-const RANK: Record<EducationRequirement, number> = {
+export const EDUCATION_RANK: Record<EducationRequirement, number> = {
   NONE: 0,
   BACHELORS: 1,
   MASTERS: 2,
@@ -66,7 +66,7 @@ export function classifyEducationRequirement(title: string, description?: string
 
   let best: EducationRequirement | null = null;
   for (const [bucket, re] of BUCKET_REGEXES) {
-    if (re.test(haystack) && (best === null || RANK[bucket] < RANK[best])) {
+    if (re.test(haystack) && (best === null || EDUCATION_RANK[bucket] < EDUCATION_RANK[best])) {
       best = bucket;
     }
   }

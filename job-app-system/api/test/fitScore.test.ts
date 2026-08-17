@@ -194,6 +194,87 @@ describe("computeFitScore", () => {
     expect(result.score).toBe(0);
     expect(result.matchedSkills).toEqual([]);
   });
+
+  describe("semantic (embedding) term", () => {
+    it("contributes nothing when either side is missing an embedding", () => {
+      const withNeither = computeFitScore(
+        { title: "Usher", organization: "Cubs" },
+        { skills: "" }
+      );
+      const withOnlyPosting = computeFitScore(
+        { title: "Usher", organization: "Cubs", embedding: JSON.stringify([1, 0]) },
+        { skills: "" }
+      );
+      const withOnlyProfile = computeFitScore(
+        { title: "Usher", organization: "Cubs" },
+        { skills: "", embedding: JSON.stringify([1, 0]) }
+      );
+      expect(withNeither.score).toBe(0);
+      expect(withOnlyPosting.score).toBe(0);
+      expect(withOnlyProfile.score).toBe(0);
+      expect(withNeither.reasons.some((r) => r.kind === "semantic")).toBe(false);
+    });
+
+    it("adds a positive semantic term when embeddings point the same direction", () => {
+      const identical = computeFitScore(
+        { title: "Usher", organization: "Cubs", embedding: JSON.stringify([1, 0, 0]) },
+        { skills: "", embedding: JSON.stringify([1, 0, 0]) }
+      );
+      const orthogonal = computeFitScore(
+        { title: "Usher", organization: "Cubs", embedding: JSON.stringify([1, 0, 0]) },
+        { skills: "", embedding: JSON.stringify([0, 1, 0]) }
+      );
+      expect(identical.score).toBeGreaterThan(orthogonal.score);
+      expect(identical.reasons.some((r) => r.kind === "semantic")).toBe(true);
+    });
+
+    it("never throws on a malformed stored embedding", () => {
+      expect(() =>
+        computeFitScore(
+          { title: "Usher", organization: "Cubs", embedding: "not json" },
+          { skills: "", embedding: JSON.stringify([1, 0]) }
+        )
+      ).not.toThrow();
+    });
+  });
+
+  describe("education penalty", () => {
+    it("penalizes a posting requiring more education than the profile states", () => {
+      const withoutRequirement = computeFitScore(
+        { title: "Research Scientist", organization: "Cubs" },
+        { skills: "", highestEducationLevel: "BACHELORS" }
+      );
+      const withRequirement = computeFitScore(
+        { title: "Research Scientist", organization: "Cubs", educationRequirement: "PHD" },
+        { skills: "", highestEducationLevel: "BACHELORS" }
+      );
+      expect(withRequirement.score).toBeLessThan(withoutRequirement.score);
+      expect(withRequirement.reasons.some((r) => r.kind === "exclude" && r.points < 0)).toBe(true);
+    });
+
+    it("does not penalize when the profile's level meets or exceeds the requirement", () => {
+      const result = computeFitScore(
+        { title: "Research Scientist", organization: "Cubs", educationRequirement: "BACHELORS" },
+        { skills: "", highestEducationLevel: "PHD" }
+      );
+      expect(result.reasons.some((r) => r.label === "Requires more education than you have")).toBe(false);
+    });
+
+    it("does not penalize when either side is unset", () => {
+      const noProfileLevel = computeFitScore(
+        { title: "Research Scientist", organization: "Cubs", educationRequirement: "PHD" },
+        { skills: "" }
+      );
+      const noPostingRequirement = computeFitScore(
+        { title: "Research Scientist", organization: "Cubs" },
+        { skills: "", highestEducationLevel: "NONE" }
+      );
+      expect(noProfileLevel.reasons.some((r) => r.label === "Requires more education than you have")).toBe(false);
+      expect(noPostingRequirement.reasons.some((r) => r.label === "Requires more education than you have")).toBe(
+        false
+      );
+    });
+  });
 });
 
 describe("countSkillMatches", () => {

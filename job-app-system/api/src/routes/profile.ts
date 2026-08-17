@@ -3,6 +3,7 @@ import { prisma } from "../db.js";
 import { asyncHandler } from "../asyncHandler.js";
 import { putCandidateProfileSchema } from "../validation.js";
 import { computeFitScore, countSkillMatches, fitTier } from "../fitScore.js";
+import { embedText } from "../embeddings.js";
 
 export const profileRouter = Router();
 
@@ -14,6 +15,8 @@ type CoverageProfileInput = {
   preferredCategories?: string | null;
   locationKeywords?: string | null;
   excludeKeywords?: string | null;
+  highestEducationLevel?: string | null;
+  embedding?: string | null;
 };
 
 // Same split/trim/lowercase logic as fitScore.ts's splitKeywords — kept in lockstep deliberately
@@ -38,6 +41,8 @@ const COVERAGE_POSTING_SELECT = {
   location: true,
   description: true,
   dismissedAt: true,
+  educationRequirement: true,
+  embedding: true,
 } as const;
 
 async function computeCoverage(profile: CoverageProfileInput | null) {
@@ -164,10 +169,21 @@ profileRouter.put(
   "/",
   asyncHandler(async (req, res) => {
     const data = putCandidateProfileSchema.parse(req.body);
+
+    // Best-effort: an unreachable local Ollama server must never block saving the profile — just
+    // leaves embedding unset (fitScore.ts's semantic term treats a missing embedding as a no-op).
+    let embedding: string | undefined;
+    try {
+      const vector = await embedText(`${data.coreSkills ?? ""} ${data.skills}`);
+      embedding = JSON.stringify(vector);
+    } catch (err) {
+      console.error("Failed to compute profile embedding (Ollama unreachable?):", err);
+    }
+
     const profile = await prisma.candidateProfile.upsert({
       where: { id: "profile" },
-      update: data,
-      create: { id: "profile", ...data },
+      update: { ...data, ...(embedding !== undefined ? { embedding } : {}) },
+      create: { id: "profile", ...data, ...(embedding !== undefined ? { embedding } : {}) },
     });
     res.json(profile);
   })

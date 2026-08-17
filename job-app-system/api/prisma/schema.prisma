@@ -34,6 +34,7 @@ model Posting {
   workMode      String?  // computed at ingest time, see scrapers/src/location.ts — "REMOTE" | "HYBRID" | "ONSITE" | null (unclassified)
   region        String?  // computed at ingest time, see scrapers/src/location.ts — "USA" | "INTERNATIONAL" | null (unclassified)
   educationRequirement String? // computed at ingest time, see scrapers/src/education.ts — "NONE" | "BACHELORS" | "MASTERS" | "PHD" | null (unclassified)
+  embedding     String?  // computed at ingest time, see scrapers/src/ingest.ts — JSON-encoded number[] from a local Ollama embedding model, null if Ollama was unreachable
   url           String
   description   String?
   postedAt      DateTime?
@@ -206,6 +207,8 @@ model CandidateProfile {
   preferredCategories String?  // comma-separated PostingCategory values
   locationKeywords    String?  // comma-separated, small location boost
   excludeKeywords     String?  // comma-separated, dealbreaker penalty
+  highestEducationLevel String? // "NONE" | "BACHELORS" | "MASTERS" | "PHD" — reuses Posting.educationRequirement's enum (scrapers/src/education.ts) to score against a posting's stated requirement. Deliberately kept here, not on ApplicantIdentity/EducationEntry: a degree level alone isn't identity PII, and this is a scoring input, matching every other field on this model.
+  embedding           String?  // computed on save (api/src/routes/profile.ts), see api/src/embeddings.ts — JSON-encoded number[] from `${coreSkills} ${skills}`, null if Ollama was unreachable
   updatedAt           DateTime @updatedAt
 }
 

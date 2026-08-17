@@ -141,7 +141,15 @@ analyticsRouter.get(
         fitScores = fitScoreCache.fitScores;
       } else {
         const scorable = await prisma.posting.findMany({
-          select: { title: true, organization: true, category: true, location: true, description: true },
+          select: {
+            title: true,
+            organization: true,
+            category: true,
+            location: true,
+            description: true,
+            educationRequirement: true,
+            embedding: true,
+          },
         });
         fitScores = scorable.map((p) => computeFitScore(p, profile).score);
         fitScoreCache = { key: cacheKey, fitScores };
@@ -309,6 +317,8 @@ const MARKET_FIT_POSTING_SELECT = {
   location: true,
   description: true,
   dismissedAt: true,
+  educationRequirement: true,
+  embedding: true,
 } as const;
 
 analyticsRouter.get(

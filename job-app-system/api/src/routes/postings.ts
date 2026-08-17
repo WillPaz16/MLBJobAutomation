@@ -21,7 +21,16 @@ export const postingsRouter = Router();
 // and the profile's skills, so it's safe to reuse across requests as long as the profile hasn't
 // changed since (`profile.updatedAt` is the cache key's other half — see fitScoreCache.ts).
 function withRawFitScore<
-  T extends { id: string; title: string; organization: string; category: string; location: string | null; description: string | null }
+  T extends {
+    id: string;
+    title: string;
+    organization: string;
+    category: string;
+    location: string | null;
+    description: string | null;
+    educationRequirement?: string | null;
+    embedding?: string | null;
+  }
 >(
   posting: T,
   profile: {
@@ -31,6 +40,8 @@ function withRawFitScore<
     preferredCategories: string | null;
     locationKeywords: string | null;
     excludeKeywords: string | null;
+    highestEducationLevel?: string | null;
+    embedding?: string | null;
   } | null
 ): T & { fitScoreRaw?: number; fitTier?: string; matchedSkills?: string[]; reasons?: unknown[]; evidence?: unknown[] } {
   if (!profile) return posting;

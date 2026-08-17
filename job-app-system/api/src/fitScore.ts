@@ -1,12 +1,18 @@
-// Deterministic keyword-based fit scoring, deliberately not ML/embedding-based (see CLAUDE.md's
-// documented decision to defer semantic matching).
+// Deterministic keyword-based fit scoring, now blended with one ML signal: a cosine-similarity
+// term against a locally-computed embedding (see api/src/embeddings.ts). CLAUDE.md's prior
+// decision deferred semantic matching pending a LOCAL model rather than a paid API — this is
+// that model. Embeddings are precomputed and stored (ingest time for postings, profile-save time
+// for the profile), so this function stays fully synchronous: it only ever reads two already-
+// computed vectors and does cosine similarity, never calls out to Ollama itself.
 //
 // raw = clamp(0, 100,
 //     roleSignal        // 0 | 6 | 16 | 30 | 42   graduated, title-only regex tiers
 //   + 12 * mt/(mt+2)    // skills matched in the TITLE, saturating
 //   + 22 * md/(md+6)    // skills matched in the DESCRIPTION, frequency-damped, saturating
 //   + locationSignal    // 0 | 6
+//   + 12 * max(0, cosineSimilarity(postingEmbedding, profileEmbedding))  // 0 if either is missing
 //   - min(40, 20 * excludeHits)
+//   - educationPenalty  // 0 | 15, if the posting's stated requirement outranks your profile's level
 // )
 //
 // mt/md are weighted sums (w = 3 core / 1 secondary) over MATCHED skills only, and both terms are
@@ -17,12 +23,16 @@
 // PERCENTILE normalization of this raw score happens in routes/postings.ts, not here — this
 // module only ever produces the raw formula output.
 
+import { cosineSimilarity } from "./embeddings.js";
+
 export interface FitScorePosting {
   title: string;
   organization: string;
   category?: string | null;
   location?: string | null;
   description?: string | null;
+  educationRequirement?: string | null;
+  embedding?: string | null;
 }
 
 export interface FitScoreProfile {
@@ -31,10 +41,17 @@ export interface FitScoreProfile {
   preferredCategories?: string | null;
   locationKeywords?: string | null;
   excludeKeywords?: string | null;
+  highestEducationLevel?: string | null;
+  embedding?: string | null;
 }
 
+// Mirrors scrapers/src/education.ts's EDUCATION_RANK — duplicated rather than cross-imported
+// since api/ and scrapers/ are independent packages (same convention as the dual-synced
+// prisma/schema.prisma files).
+const EDUCATION_RANK: Record<string, number> = { NONE: 0, BACHELORS: 1, MASTERS: 2, PHD: 3 };
+
 export interface FitScoreReason {
-  kind: "role" | "skill" | "location" | "exclude";
+  kind: "role" | "skill" | "location" | "exclude" | "semantic";
   label: string;
   points: number;
 }
@@ -215,6 +232,24 @@ export function computeFitScore(posting: FitScorePosting, profile: FitScoreProfi
   }
   score += titlePoints + descPoints;
 
+  // semantic: cosine similarity between precomputed embeddings, contributes 0 when either is
+  // missing (unbackfilled posting, or a profile that's never been saved since this feature
+  // shipped) — never a penalty for missing data, same philosophy as the skill terms above.
+  if (posting.embedding && profile.embedding) {
+    try {
+      const postingVec = JSON.parse(posting.embedding) as number[];
+      const profileVec = JSON.parse(profile.embedding) as number[];
+      const similarity = Math.max(0, cosineSimilarity(postingVec, profileVec));
+      if (similarity > 0) {
+        const semanticPoints = 12 * similarity;
+        score += semanticPoints;
+        reasons.push({ kind: "semantic", label: "Semantic similarity to your profile", points: Math.round(semanticPoints * 10) / 10 });
+      }
+    } catch {
+      // Malformed stored embedding (shouldn't happen outside manual DB edits) — skip, don't throw.
+    }
+  }
+
   // locationSignal
   const locationKeywords = splitKeywords(profile.locationKeywords);
   const location = (posting.location ?? "").toLowerCase();
@@ -236,6 +271,18 @@ export function computeFitScore(posting: FitScorePosting, profile: FitScoreProfi
       label: `Matched ${excludeHits.length} exclude keyword${excludeHits.length === 1 ? "" : "s"}`,
       points: -penalty,
     });
+  }
+
+  // educationPenalty — one-directional: only penalizes when the posting requires MORE education
+  // than your profile states you have. No bonus for being "overqualified," and no effect at all
+  // when either side is unset (an unclassified posting, or a profile that hasn't set a level yet).
+  if (
+    posting.educationRequirement &&
+    profile.highestEducationLevel &&
+    EDUCATION_RANK[posting.educationRequirement] > EDUCATION_RANK[profile.highestEducationLevel]
+  ) {
+    score -= 15;
+    reasons.push({ kind: "exclude", label: "Requires more education than you have", points: -15 });
   }
 
   score = Math.round(Math.min(100, Math.max(0, score)));
