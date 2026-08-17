@@ -291,6 +291,25 @@ function CardBody({
             </PopoverContent>
           </Popover>
         )}
+        {application.isStalled && (
+          <Popover>
+            <PopoverTrigger
+              render={
+                <button
+                  type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  className="mt-1.5 flex w-fit items-center gap-1 text-xs text-amber-600 hover:underline dark:text-amber-400"
+                />
+              }
+            >
+              <AlertTriangle className="size-3" />
+              Stalled {relativeTime(application.lastActivityAt)}
+            </PopoverTrigger>
+            <PopoverContent className="w-72 text-sm">
+              No stage change in 14+ days — might be worth a follow-up.
+            </PopoverContent>
+          </Popover>
+        )}
         {application.posting?.location && (
           <div className="mt-1.5 flex items-center gap-1 text-xs text-muted-foreground">
             <MapPin className="size-3" />

@@ -4,6 +4,7 @@ import { asyncHandler } from "../asyncHandler.js";
 import { putCandidateProfileSchema } from "../validation.js";
 import { computeFitScore, countSkillMatches, fitTier } from "../fitScore.js";
 import { embedText } from "../embeddings.js";
+import { CANDIDATE_SKILL_VOCABULARY } from "../skillVocabulary.js";
 
 export const profileRouter = Router();
 
@@ -45,7 +46,31 @@ const COVERAGE_POSTING_SELECT = {
   embedding: true,
 } as const;
 
-async function computeCoverage(profile: CoverageProfileInput | null) {
+// Top N candidate-vocabulary terms not already in the profile, ranked by how many active
+// postings mention them — the "what should I add to my resume" signal. Deliberately only computed
+// when asked (see includeSkillGaps below): it's an extra regex pass over every active posting on
+// top of the existing per-skill matching this function already does, and skill gaps describe the
+// overall posting pool rather than something that needs to re-derive on every debounced keystroke
+// of an unsaved draft preview.
+function computeSkillGaps(
+  haystacks: string[],
+  existingTerms: string[]
+): { term: string; postings: number }[] {
+  const existing = new Set(existingTerms);
+  const gaps = CANDIDATE_SKILL_VOCABULARY.filter((term) => !existing.has(term)).map((term) => {
+    let postingsMatched = 0;
+    for (const haystack of haystacks) {
+      if (countSkillMatches(haystack, term) > 0) postingsMatched++;
+    }
+    return { term, postings: postingsMatched };
+  });
+  return gaps
+    .filter((g) => g.postings > 0)
+    .sort((a, b) => b.postings - a.postings)
+    .slice(0, 15);
+}
+
+async function computeCoverage(profile: CoverageProfileInput | null, options: { includeSkillGaps?: boolean } = {}) {
   // Scoped to `closedAt: null` only (active postings), NOT `dismissedAt: null` — dismissed
   // postings must stay in this set so calibration below can compute a real dismissedAvg/dismissed
   // count. `totalPostings` (Discovery's default active+non-dismissed view scope) is then derived
@@ -61,6 +86,7 @@ async function computeCoverage(profile: CoverageProfileInput | null) {
     return {
       totalPostings,
       skills: [],
+      skillGaps: [],
       fitScores: [],
       tierCounts: { Strong: 0, Good: 0, Fair: 0, Weak: 0 },
       calibration: { dismissedAvg: null, dismissedCount: 0, appliedAvg: null, appliedCount: 0 },
@@ -122,9 +148,14 @@ async function computeCoverage(profile: CoverageProfileInput | null) {
     }
   }
 
+  const skillGaps = options.includeSkillGaps
+    ? computeSkillGaps(haystacks, [...coreSkillTerms, ...secondarySkillTerms])
+    : [];
+
   return {
     totalPostings,
     skills,
+    skillGaps,
     fitScores,
     tierCounts,
     calibration: {
@@ -142,7 +173,7 @@ profileRouter.get(
   "/coverage",
   asyncHandler(async (_req, res) => {
     const profile = await prisma.candidateProfile.findUnique({ where: { id: "profile" } });
-    res.json(await computeCoverage(profile));
+    res.json(await computeCoverage(profile, { includeSkillGaps: true }));
   })
 );
 

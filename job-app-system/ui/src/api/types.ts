@@ -228,6 +228,12 @@ export interface Application {
   appliedAt: string | null;
   updatedAt: string;
   createdAt: string;
+  // Computed server-side from ApplicationStageEvent (not stored columns) — see
+  // api/src/applicationStaleness.ts. isStalled is true when stage is REVIEWING/APPLIED/INTERVIEW
+  // and no stage change in 14+ days; lastActivityAt is the most recent stage-event timestamp
+  // (falls back to updatedAt if no stage-event row exists).
+  isStalled: boolean;
+  lastActivityAt: string;
 }
 
 export interface ResumeBullet {
@@ -253,6 +259,7 @@ export interface AnalyticsSummary {
   total: number;
   byStage: Record<string, number>;
   bySource: Record<string, number>;
+  stalledCount: number;
 }
 
 // See api/src/routes/analytics.ts's GET /timeseries doc comment for the exact bucketing rules.
@@ -311,6 +318,9 @@ export interface AnalyticsMarket {
 export interface ProfileCoverage {
   totalPostings: number;
   skills: { term: string; tier: "core" | "secondary"; postings: number; occurrences: number }[];
+  // Only populated on GET /api/profile/coverage — empty on the live draft-preview response
+  // (POST /api/profile/coverage/preview), since it's not recomputed per keystroke.
+  skillGaps: { term: string; postings: number }[];
   fitScores: number[];
   tierCounts: { Strong: number; Good: number; Fair: number; Weak: number };
   calibration: {

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import request from "supertest";
 import { createApp } from "../src/index.js";
 import { prisma } from "../src/db.js";
-import { createApplication, createDocument, createPosting } from "./helpers.js";
+import { createApplication, createDocument, createPosting, createStageEvent } from "./helpers.js";
 
 const app = createApp();
 
@@ -14,6 +14,29 @@ describe("GET /api/applications", () => {
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(1);
     expect(res.body[0].posting.id).toBe(posting.id);
+  });
+
+  it("marks a long-silent APPLIED application as stalled and reports its last activity", async () => {
+    const posting = await createPosting();
+    const app_ = await createApplication(posting.id, { stage: "APPLIED" });
+    const lastActivity = new Date(Date.now() - 20 * 24 * 60 * 60 * 1000);
+    await createStageEvent(app_.id, { toStage: "APPLIED", createdAt: lastActivity });
+
+    const res = await request(app).get("/api/applications");
+    expect(res.body[0].isStalled).toBe(true);
+    expect(new Date(res.body[0].lastActivityAt).getTime()).toBe(lastActivity.getTime());
+    expect(res.body[0].stageEvents).toBeUndefined();
+  });
+
+  it("does not mark a FOUND application as stalled regardless of age", async () => {
+    const posting = await createPosting();
+    await createApplication(posting.id, {
+      stage: "FOUND",
+      updatedAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+    });
+
+    const res = await request(app).get("/api/applications");
+    expect(res.body[0].isStalled).toBe(false);
   });
 });
 

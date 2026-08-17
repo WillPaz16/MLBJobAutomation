@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { GraduationCap, MapPin, Search, SlidersHorizontal, Sparkles, Tags } from "lucide-react";
+import { GraduationCap, Lightbulb, MapPin, Search, SlidersHorizontal, Sparkles, Tags } from "lucide-react";
 import { api } from "@/api/client";
 import type { CandidateProfileInput, Posting, PostingCategory, ProfileCoverage } from "@/api/types";
 import { Badge } from "@/components/ui/badge";
@@ -307,6 +307,10 @@ export function Compatibility() {
     load();
   }, []);
 
+  function addSkillGapTerm(term: string) {
+    setSkills((prev) => (prev.trim().length > 0 ? `${prev.trim()}, ${term}` : term));
+  }
+
   function toggleCategory(category: PostingCategory, checked: boolean) {
     setPreferredCategories((prev) => {
       const next = new Set(prev);
@@ -602,6 +606,31 @@ export function Compatibility() {
                 )}
               </CardContent>
             </Card>
+
+            {coverage && coverage.skillGaps.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center gap-1.5">
+                    <Lightbulb className="size-4 text-primary" />
+                    <CardTitle>Skill gaps</CardTitle>
+                  </div>
+                  <CardDescription>
+                    Terms common in active postings that aren't in your skills yet. Click to add.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-wrap gap-1">
+                    {coverage.skillGaps.map((gap) => (
+                      <button key={gap.term} type="button" onClick={() => addSkillGapTerm(gap.term)}>
+                        <Badge variant="outline" className="cursor-pointer hover:bg-accent">
+                          {gap.term} · {gap.postings}
+                        </Badge>
+                      </button>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {calibration && (calibration.dismissedCount > 0 || calibration.appliedCount > 0) && (
               <Card className="edge-brand">

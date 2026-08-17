@@ -12,6 +12,7 @@ describe("GET /api/profile/coverage", () => {
     expect(res.status).toBe(200);
     expect(res.body.totalPostings).toBe(1);
     expect(res.body.skills).toEqual([]);
+    expect(res.body.skillGaps).toEqual([]);
     expect(res.body.fitScores).toEqual([]);
     expect(res.body.tierCounts).toEqual({ Strong: 0, Good: 0, Fair: 0, Weak: 0 });
     expect(res.body.calibration).toEqual({
@@ -82,6 +83,41 @@ describe("GET /api/profile/coverage", () => {
     expect(res.body.calibration.dismissedCount).toBe(1);
     expect(res.body.calibration.appliedAvg).toBeGreaterThan(res.body.calibration.dismissedAvg);
   });
+
+  it("surfaces vocabulary skills missing from the profile, excludes ones already in it", async () => {
+    // Profile already has "python" — it must never appear in skillGaps even though it's in the
+    // candidate vocabulary and matches a posting below.
+    await request(app).put("/api/profile").send({ skills: "python" });
+
+    await createPosting({
+      title: "Data Engineer",
+      organization: "Cubs",
+      description: "We use python, sql, and docker daily.",
+    });
+
+    const res = await request(app).get("/api/profile/coverage");
+    const gapTerms = res.body.skillGaps.map((g: any) => g.term);
+    expect(gapTerms).not.toContain("python");
+    expect(gapTerms).toContain("sql");
+    expect(gapTerms).toContain("docker");
+    const sqlGap = res.body.skillGaps.find((g: any) => g.term === "sql");
+    expect(sqlGap.postings).toBe(1);
+  });
+
+  it("sorts skillGaps by postings matched, descending", async () => {
+    await request(app).put("/api/profile").send({ skills: "none-of-these-match" });
+    await createPosting({ title: "A", organization: "Cubs", description: "sql sql" });
+    await createPosting({ title: "B", organization: "Cubs", description: "sql and docker" });
+
+    const res = await request(app).get("/api/profile/coverage");
+    const sqlGap = res.body.skillGaps.find((g: any) => g.term === "sql");
+    const dockerGap = res.body.skillGaps.find((g: any) => g.term === "docker");
+    expect(sqlGap.postings).toBe(2);
+    expect(dockerGap.postings).toBe(1);
+    const sqlIndex = res.body.skillGaps.findIndex((g: any) => g.term === "sql");
+    const dockerIndex = res.body.skillGaps.findIndex((g: any) => g.term === "docker");
+    expect(sqlIndex).toBeLessThan(dockerIndex);
+  });
 });
 
 describe("POST /api/profile/coverage/preview", () => {
@@ -105,6 +141,14 @@ describe("POST /api/profile/coverage/preview", () => {
 
     const after = await request(app).get("/api/profile");
     expect(after.body).toBeNull();
+  });
+
+  it("never computes skillGaps on the live draft-preview path", async () => {
+    await createPosting({ title: "Data Engineer", organization: "Cubs", description: "sql and docker" });
+    const res = await request(app)
+      .post("/api/profile/coverage/preview")
+      .send({ skills: "python" });
+    expect(res.body.skillGaps).toEqual([]);
   });
 
   it("rejects an invalid draft the same way PUT / does", async () => {

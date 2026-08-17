@@ -2,6 +2,7 @@ import { Router } from "express";
 import { prisma } from "../db.js";
 import { asyncHandler } from "../asyncHandler.js";
 import { computeFitScore } from "../fitScore.js";
+import { findStalledApplications } from "../applicationStaleness.js";
 import { analyticsQuerySchema, timeseriesQuerySchema } from "../validation.js";
 
 export const analyticsRouter = Router();
@@ -100,7 +101,12 @@ analyticsRouter.get(
       bySource[sourceName] = (bySource[sourceName] ?? 0) + 1;
     }
 
-    res.json({ total: applications.length, byStage, bySource });
+    // Unconditional — not scoped by from/to/category/isMlbTeam. "Stalled" is a live, current-state
+    // question ("how many need a follow-up right now"), not a historical metric to slice by date
+    // range the way the rest of this endpoint's response is.
+    const stalledCount = (await findStalledApplications()).length;
+
+    res.json({ total: applications.length, byStage, bySource, stalledCount });
   })
 );
 

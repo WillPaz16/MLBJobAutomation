@@ -14,6 +14,7 @@ describe("GET /api/analytics/summary", () => {
       total: 0,
       byStage: {},
       bySource: {},
+      stalledCount: 0,
     });
   });
 
@@ -26,6 +27,19 @@ describe("GET /api/analytics/summary", () => {
     const res = await request(app).get("/api/analytics/summary");
     expect(res.body.total).toBe(3);
     expect(res.body.byStage).toEqual({ APPLIED: 2, INTERVIEW: 1 });
+  });
+
+  it("counts stalled applications regardless of date/category/isMlbTeam filters", async () => {
+    const posting = await createPosting({ category: "DATA_SCIENCE" });
+    const stalled = await createApplication(posting.id, { stage: "APPLIED" });
+    await createStageEvent(stalled.id, {
+      toStage: "APPLIED",
+      createdAt: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000),
+    });
+
+    const res = await request(app).get("/api/analytics/summary?category=BASEBALL_OPS");
+    expect(res.body.total).toBe(0);
+    expect(res.body.stalledCount).toBe(1);
   });
 
   it("no longer returns the removed fake response-time fields", async () => {

@@ -5,6 +5,7 @@ import { asyncHandler, HttpError } from "../asyncHandler.js";
 import { paginationSchema, updateApplicationSchema, reorderApplicationsSchema } from "../validation.js";
 import { resolveTemplate, type TemplateContext } from "../answerTemplate.js";
 import { generateApplyAssistScript } from "../applyAssist/generateScript.js";
+import { isApplicationStalled, getLastActivityAt } from "../applicationStaleness.js";
 
 export const applicationsRouter = Router();
 
@@ -84,12 +85,25 @@ applicationsRouter.get(
   asyncHandler(async (req, res) => {
     const { take, skip } = paginationSchema.parse(req.query);
     const applications = await prisma.application.findMany({
-      include: { posting: { include: { source: true } }, resumeDoc: true, coverDoc: true },
+      include: {
+        posting: { include: { source: true } },
+        resumeDoc: true,
+        coverDoc: true,
+        stageEvents: { orderBy: { createdAt: "desc" }, take: 1 },
+      },
       orderBy: { updatedAt: "desc" },
       take,
       skip,
     });
-    res.json(applications);
+    // isStalled/lastActivityAt are computed here, not stored columns — stageEvents itself is
+    // stripped back off the response (kept light, same discipline as GET /api/postings' payload
+    // size concerns) rather than shipping the full stage-event array to every caller.
+    res.json(
+      applications.map((a) => {
+        const { stageEvents, ...application } = a;
+        return { ...application, isStalled: isApplicationStalled(a), lastActivityAt: getLastActivityAt(a) };
+      })
+    );
   })
 );
 

@@ -173,7 +173,7 @@ export function Home() {
       <div className="mx-auto max-w-7xl p-6">
         <NotificationBanner />
 
-        <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatSlot
             label="Active postings"
             to="/discovery"
@@ -196,6 +196,12 @@ export function Home() {
             to="/analytics"
             state={summary}
             render={() => (summary.status === "ok" ? summary.value.total : "—")}
+          />
+          <StatSlot
+            label="Stalled applications"
+            to="/pipeline"
+            state={summary}
+            render={() => (summary.status === "ok" ? summary.value.stalledCount : "—")}
           />
         </div>
 
