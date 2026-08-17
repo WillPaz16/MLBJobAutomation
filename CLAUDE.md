@@ -95,55 +95,11 @@ React UI, all running on this machine — nothing is deployed anywhere.
   was confirmed with a live request against its actual API before being added (see the
   `add-job-source` skill). A trailing comment in that file lists teams confirmed to have no
   scrapable public API, so future sessions don't re-research the same dead ends.
-- **MLB coverage is 30/30 teams via scraping, eleven platforms deep** — Greenhouse, Lever,
-  Workday, ADP (Workforce Now), UKG Pro Recruiting (aka UltiPro; hosts vary —
-  `recruiting.ultipro.com`, `recruiting2.ultipro.com`, `<org>.rec.pro.ukg.net` are all the same
-  platform/API shape), BambooHR, aaimtrack.com, TeamWork Online (team-specific career pages, plain
-  HTTP — see below), Dayforce HCM (Playwright network interception — see below), and the generic
-  `teamPageAdapter` (Playwright DOM scraping — covers Brewers/iCIMS, Padres/Hireology, and
-  Twins/Paycor, none of which had a JSON API but none had bot protection either). **No dead ends
-  remain.** Royals/Diamondbacks post to both TeamWork Online and Dayforce; both sources are wired
-  in and cross-source duplicate detection (see below) keeps the same job from showing up twice.
-  **Two reversals of earlier wrong conclusions, both worth remembering for any future "this site
-  is blocked" claim:**
-  (1) **`teamworkonline.ts`**: Marlins/Reds/Royals/Diamondbacks were long assumed blocked because
-  TeamWork Online's platform-wide job search sits behind Cloudflare — but each team's own career
-  page (`teamworkonline.com/baseball-jobs/<org>/<org>`) is plain server-rendered HTML with a real
-  browser `User-Agent` header, no challenge, and a clean schema.org `JobPosting` JSON-LD block per
-  listing. Lesson: always try a plain `fetch` with a real browser User-Agent before concluding a
-  site needs Playwright or has bot detection — a missing/generic UA can look identical to a real
-  block.
-  (2) **`dayforce.ts`**: Dayforce's own `POST /api/geo/<tenant>/jobposting/search` API 403s on
-  every scripted request, including one replayed from inside the live page's own JS console with
-  matching cookies — but that block is specifically against standalone HTTP replay, not against
-  browser automation. A genuine Playwright navigation to the candidate portal (real Chromium
-  loading the page, same technique as `teamPageAdapter`) reaches that same endpoint and gets a
-  normal 200 with the full job list; `dayforce.ts` intercepts that response via
-  `page.waitForResponse()` instead of hitting the API directly. This isn't defeating bot
-  detection — the site only refuses standalone API calls, and Playwright is doing exactly what a
-  real visitor's browser does. Lesson: "blocked" via `curl`/`fetch` doesn't necessarily mean
-  blocked for a real browser session — retest with Playwright before writing a JSON API off as
-  bot-protected, and only treat it as a genuine dead end if browser automation *also* fails (a
-  CAPTCHA/challenge page, or a block on the page load itself, not just a standalone API call).
-  Also worth remembering generally: **a team can have more than one legitimate posting source** —
-  finding one bot-protected API doesn't mean that's the only source, or even that it's actually
-  unusable; check the org's own career page for every outbound apply link, not just the first one
-  found, and don't stop at the first blocked attempt. **No JSON API ≠ dead end, "blocked" on one
-  page of a platform ≠ blocked on all of it, and "blocked for curl" ≠ "blocked for Playwright."**
-  Twelve other teams (Yankees, Dodgers, Pirates, Rockies, Astros, Angels, Nationals, White Sox,
-  Rays via ADP/UKG, Blue Jays via BambooHR, Brewers/Padres/Twins via `teamPageAdapter`) were
-  previously miscategorized as dead ends because the research only checked the mlb.com career page
-  instead of following the actual "Apply Now" redirect. When adding a source: try a plain fetch
-  with a real User-Agent first, then look for a JSON API (browser network capture, not
-  curl-guessing — client-rendered apps like aaimtrack's Vue SPA don't reveal their API to curl at
-  all), then try that same API via genuine Playwright navigation if curl gets blocked, and only
-  reach for Playwright DOM-scraping (`teamPageAdapter`) if the page is genuinely client-rendered
-  with no extractable API at all. If a team's coverage ever needs closing again for some other
-  reason, the manual flow
-  (`POST /api/postings/manual`, "Add posting manually" on Discovery) exists for exactly that — it
-  creates a `Source` row of `type: "manual"` per organization (`manual:<org>`) so manual entries
-  still group/attribute like scraped ones, and dedupes on a sha256 hash of the URL via the same
-  `sourceId`+`externalId` unique constraint everything else uses.
+- **MLB coverage is 30/30 teams via scraping, eleven platforms deep, no dead ends remain.**
+  Full platform-by-platform history, the two reversed "this site is blocked" conclusions
+  (TeamWork Online, Dayforce), and the verification method to follow when adding a new source are
+  in [`docs/scraping-platform-history.md`](docs/scraping-platform-history.md) — read that before
+  marking any team/platform as a dead end or re-investigating one already covered there.
 - **`categorize()` takes an optional third `description` argument** — adapters that get a
   description/summary field from their source API should pass it through; title+org alone missed
   real cases (e.g. a UKG posting titled "Junior Product Designer" whose description said it was on
@@ -410,15 +366,19 @@ npm test                                                       # in api/, scrape
 
 ## MCP tooling
 
-`.mcp.json` at the repo root configures two project-scoped MCP servers (Claude will prompt to
-approve them on first use in a session):
+`.mcp.json` at the repo root configures a project-scoped MCP server (Claude will prompt to
+approve it on first use in a session):
 - **Context7** — fetches current, version-specific docs for a library instead of relying on
   training-data knowledge. Worth reaching for on this project specifically: at least two real
   bugs this session came from stale assumptions about a library's API (shadcn's Base UI using
   `render={}` instead of Radix's `asChild`, `onClick` instead of `onSelect` on menu items) —
-  checking current docs first would likely have caught both before they shipped.
-- **Serena** — semantic code navigation/editing via language-server symbol lookups instead of
-  grep. More useful as this codebase grows; modest payoff at its current size (a few dozen files
-  across three packages), but cheap to have available.
-- Serena requires `uv`/`uvx` (installed via `brew install uv` this session); Context7 needs only
-  `npx`, already available. Neither requires an API key for basic use.
+  checking current docs first would likely have caught both before they shipped. Needs only
+  `npx`, already available; no API key required for basic use.
+- **Serena** (semantic code navigation via language-server symbol lookups) was configured
+  alongside Context7 but removed after a transcript audit found zero actual invocations across
+  120 sessions — reconsider adding it back if the codebase grows enough that grep-based
+  navigation starts being a bottleneck.
+
+## Task Master AI Instructions
+**Import Task Master's development workflow commands and guidelines, treat as if import is in the main CLAUDE.md file.**
+@./.taskmaster/CLAUDE.md

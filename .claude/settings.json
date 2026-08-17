@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./.env)",
+      "Read(./Academic Transcript.pdf)",
+      "Read(./Diploma_BA.pdf)",
+      "Read(./Diploma_BS.pdf)",
+      "Read(./Transcript_WilliamPaz.pdf)",
+      "Read(./Headshots/**)",
+      "Read(./Resumes/**)",
+      "Read(./Cover Letters/**)",
+      "Read(./Questionnaires/**)",
+      "Read(./job-app-system/api/data/*.db)",
+      "Read(./job-app-system/api/data/backups/**)",
+      "Read(./job-app-system/api/data/documents/**)"
+    ]
+  }
+}
